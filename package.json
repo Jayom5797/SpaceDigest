@@ -1,0 +1,26 @@
+{
+  "name": "appendix-retrieval-engine",
+  "version": "1.0.0",
+  "description": "Module 2: Appendix-Based Retrieval Engine for Scientific Claim Verification",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "ingest:arxiv": "node scripts/ingest-arxiv.js",
+    "ingest:nasa": "node scripts/ingest-nasa-ads.js",
+    "build": "node scripts/build-index.js"
+  },
+  "keywords": [
+    "scientific",
+    "claim",
+    "verification",
+    "appendix",
+    "retrieval"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2"
+  }
+}

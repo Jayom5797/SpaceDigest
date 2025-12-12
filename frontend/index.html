@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Module 2: Source Retrieval API</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .results {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .results.hidden { display: none; }
+        
+        .hierarchy {
+            background: #f0f4ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .hierarchy h3 { color: #667eea; margin-bottom: 10px; }
+        .hierarchy-path { font-size: 14px; color: #666; }
+        .query-time { font-size: 13px; color: #888; margin-top: 8px; }
+        
+        .source-item {
+            background: #f9f9f9;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #764ba2;
+        }
+        
+        .source-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .source-meta {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        
+        .source-abstract {
+            background: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #555;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+        
+        .source-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .source-link:hover { text-decoration: underline; }
+        
+        .badge {
+            display: inline-block;
+            background: #764ba2;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .error {
+            background: #ffe0e0;
+            color: #c00;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #c00;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #667eea;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 Module 2: Source Retrieval API</h1>
+        <p class="subtitle">Hierarchical Space Science Reference Database</p>
+
+        <div class="input-section">
+            <label for="claimInput">Enter a scientific claim:</label>
+            <textarea 
+                id="claimInput" 
+                placeholder="Example: Neutron stars can exceed 5 solar masses"
+            ></textarea>
+            <button onclick="getSources()">Get Sources</button>
+        </div>
+
+        <div id="results" class="results hidden"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api/get-sources';
+
+        async function getSources() {
+            const claimInput = document.getElementById('claimInput');
+            const resultsDiv = document.getElementById('results');
+            
+            const claim = claimInput.value.trim();
+
+            if (!claim) {
+                alert('Please enter a scientific claim.');
+                return;
+            }
+
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.innerHTML = '<p class="loading">Searching hierarchical index...</p>';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ claim })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Request failed');
+                }
+
+                displayResults(data);
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                        <br><small>Make sure the server is running: npm start</small>
+                    </div>
+                `;
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+
+            if (!data.topic) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <strong>No sources found</strong>
+                        <p>${data.message}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="hierarchy">
+                    <h3>📚 Source Location</h3>
+                    <div class="hierarchy-path">
+                        <strong>${data.domain}</strong> → 
+                        <strong>${data.topic}</strong> → 
+                        <strong>${data.subtopic}</strong>
+                    </div>
+                    <div class="query-time">
+                        ⚡ Query time: ${data.queryTime}ms | 
+                        📊 Relevance: ${data.relevance} keyword matches |
+                        📄 ${data.totalSources} sources found
+                    </div>
+                </div>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">📖 Relevant Sources</h3>
+            `;
+
+            data.sources.forEach(source => {
+                html += `
+                    <div class="source-item">
+                        <div class="source-title">${source.title}</div>
+                        
+                        <div class="source-meta">
+                            <span class="badge">PAPER</span>
+                            ${source.journal || 'arXiv preprint'}
+                            ${source.publicationDate ? ` • ${source.publicationDate}` : ''}
+                        </div>
+                        
+                        <div class="source-meta">
+                            <strong>Authors:</strong> ${source.authors || 'Unknown'}
+                        </div>
+                        
+                        ${source.doi ? `
+                            <div class="source-meta">
+                                <strong>DOI:</strong> 
+                                <a href="https://doi.org/${source.doi}" class="source-link" target="_blank">
+                                    ${source.doi}
+                                </a>
+                            </div>
+                        ` : ''}
+                        
+                        ${source.arxiv ? `
+                            <div class="source-meta">
+                                <strong>arXiv:</strong> 
+                                <a href="${source.url}" class="source-link" target="_blank">
+                                    ${source.arxiv}
+                                </a>
+                            </div>
+                        ` : ''}
+                        
+                        ${source.abstract ? `
+                            <div class="source-abstract">
+                                <strong>Abstract:</strong><br>
+                                ${source.abstract.substring(0, 300)}${source.abstract.length > 300 ? '...' : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
