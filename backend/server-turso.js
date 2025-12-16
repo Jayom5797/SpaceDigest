@@ -278,29 +278,58 @@ app.post('/api/get-sources', async (req, res) => {
       });
     }
     
-    // Use FTS search with keywords - get more results for relevance scoring
+    // Build SQL query with filters
     const query = keywords.join(' OR ');
-    const fetchLimit = 200; // Fetch more to calculate relevance
+    const fetchLimit = 200;
     
-    const result = await db.execute({
-      sql: `
-        SELECT 
-          p.id,
-          p.title,
-          p.abstract,
-          p.authors,
-          p.year,
-          p.topic,
-          p.subtopic,
-          p.keywords
-        FROM papers_fts
-        JOIN papers p ON papers_fts.rowid = p.rowid
-        WHERE papers_fts MATCH ?
-        ORDER BY rank
-        LIMIT ?
-      `,
-      args: [query, fetchLimit]
-    });
+    let sql = `
+      SELECT 
+        p.id,
+        p.title,
+        p.abstract,
+        p.authors,
+        p.year,
+        p.topic,
+        p.subtopic,
+        p.keywords,
+        p.source
+      FROM papers_fts
+      JOIN papers p ON papers_fts.rowid = p.rowid
+      WHERE papers_fts MATCH ?
+    `;
+    
+    const args = [query];
+    
+    // Apply filters
+    if (filters.yearMin) {
+      sql += ' AND p.year >= ?';
+      args.push(parseInt(filters.yearMin));
+    }
+    
+    if (filters.yearMax) {
+      sql += ' AND p.year <= ?';
+      args.push(parseInt(filters.yearMax));
+    }
+    
+    if (filters.topic) {
+      sql += ' AND p.topic = ?';
+      args.push(filters.topic);
+    }
+    
+    if (filters.subtopic) {
+      sql += ' AND p.subtopic = ?';
+      args.push(filters.subtopic);
+    }
+    
+    if (filters.source) {
+      sql += ' AND p.source = ?';
+      args.push(filters.source);
+    }
+    
+    sql += ' ORDER BY rank LIMIT ?';
+    args.push(fetchLimit);
+    
+    const result = await db.execute({ sql, args });
     
     if (result.rows.length === 0) {
       return res.json({
@@ -326,6 +355,19 @@ app.post('/api/get-sources', async (req, res) => {
       }
       
       const relevance = calculateRelevance(row, keywords, index);
+      const source = row.source || 'arxiv';
+      
+      // Generate correct URL based on source
+      let url, paperId;
+      if (source === 'nasa-ads') {
+        // NASA ADS bibcode - encode & as %26 for URL
+        paperId = row.id;
+        url = `https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(row.id)}/abstract`;
+      } else {
+        // arXiv ID
+        paperId = row.id;
+        url = `https://arxiv.org/abs/${row.id}`;
+      }
       
       return {
         type: 'paper',
@@ -333,19 +375,29 @@ app.post('/api/get-sources', async (req, res) => {
         abstract: row.abstract,
         authors: authorsStr,
         year: row.year,
-        arxiv: row.id,
-        url: `https://arxiv.org/abs/${row.id}`,
+        paperId: paperId,
+        url: url,
         publicationDate: row.year ? `${row.year}` : null,
-        relevance: relevance
+        relevance: relevance,
+        source: source,
+        topic: row.topic,
+        subtopic: row.subtopic
       };
     });
     
     // Sort by relevance score (highest first)
     sourcesWithRelevance.sort((a, b) => b.relevance - a.relevance);
     
+    // Apply relevance filter if specified
+    let filteredSources = sourcesWithRelevance;
+    if (filters.minRelevance) {
+      const minRel = parseFloat(filters.minRelevance);
+      filteredSources = sourcesWithRelevance.filter(s => s.relevance >= minRel);
+    }
+    
     // Paginate results
-    const paginatedSources = sourcesWithRelevance.slice(offset, offset + limit);
-    const hasMore = offset + limit < sourcesWithRelevance.length;
+    const paginatedSources = filteredSources.slice(offset, offset + limit);
+    const hasMore = offset + limit < filteredSources.length;
     
     // Get most common topic from results
     const topicCounts = {};
@@ -369,13 +421,63 @@ app.post('/api/get-sources', async (req, res) => {
       subtopic: topSubtopic[0],
       relevance: keywords.length,
       sources: paginatedSources,
-      totalSources: sourcesWithRelevance.length,
+      totalSources: filteredSources.length,
       returnedSources: paginatedSources.length,
       hasMore: hasMore,
       queryTime: Date.now() - startTime,
       message: `Found ${sourcesWithRelevance.length} source(s) in ${topTopic[0]} → ${topSubtopic[0]}`
     });
     
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get available filter options
+app.get('/api/filters', async (req, res) => {
+  try {
+    // Get all topics with their subtopics
+    const result = await db.execute(`
+      SELECT DISTINCT topic, subtopic
+      FROM papers
+      ORDER BY topic, subtopic
+    `);
+    
+    // Group by topic
+    const topics = {};
+    result.rows.forEach(row => {
+      if (!topics[row.topic]) {
+        topics[row.topic] = [];
+      }
+      topics[row.topic].push(row.subtopic);
+    });
+    
+    // Get year range
+    const yearResult = await db.execute(`
+      SELECT MIN(year) as min, MAX(year) as max
+      FROM papers
+      WHERE year IS NOT NULL
+    `);
+    
+    // Get source counts
+    const sourceResult = await db.execute(`
+      SELECT source, COUNT(*) as count
+      FROM papers
+      GROUP BY source
+    `);
+    
+    res.json({
+      topics: topics,
+      yearRange: {
+        min: yearResult.rows[0].min,
+        max: yearResult.rows[0].max
+      },
+      sources: sourceResult.rows.map(r => ({
+        value: r.source,
+        label: r.source === 'arxiv' ? 'arXiv' : 'NASA ADS',
+        count: r.count
+      }))
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

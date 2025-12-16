@@ -127,6 +127,97 @@
             animation: fadeInUp 0.6s ease-out 0.2s both;
         }
         
+        .filters-toggle {
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .filters-toggle:hover {
+            background: rgba(102, 126, 234, 0.15);
+            border-color: rgba(102, 126, 234, 0.3);
+        }
+        
+        .filters-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .filters-panel.open {
+            max-height: 800px;
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px 0;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0;
+        }
+        
+        select, input[type="number"], input[type="range"] {
+            background: rgba(15, 15, 35, 0.5);
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(15, 15, 35, 0.8);
+        }
+        
+        .range-value {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .filter-actions button {
+            flex: 1;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+        
+        .clear-filters {
+            background: rgba(239, 68, 68, 0.2) !important;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .clear-filters:hover {
+            background: rgba(239, 68, 68, 0.3) !important;
+        }
+        
         label {
             display: block;
             margin-bottom: 12px;
@@ -456,12 +547,68 @@
                     placeholder="Example: Neutron stars can exceed 5 solar masses&#10;Example: Evidence for dark matter in galaxy rotation curves&#10;Example: Exoplanet atmospheric composition detection methods"
                 ></textarea>
             </div>
+            
+            <!-- Filters Toggle -->
+            <div class="filters-toggle" onclick="toggleFilters()">
+                <span style="font-weight: 600;">🎛️ Advanced Filters</span>
+                <span id="filterToggleIcon">▼</span>
+            </div>
+            
+            <!-- Filters Panel -->
+            <div id="filtersPanel" class="filters-panel">
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label>📅 Year Range</label>
+                        <input type="number" id="yearMin" placeholder="From (e.g., 2000)" min="1990" max="2025">
+                        <input type="number" id="yearMax" placeholder="To (e.g., 2024)" min="1990" max="2025">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>📊 Min Relevance Score</label>
+                        <input type="range" id="minRelevance" min="1" max="10" step="0.5" value="1" oninput="updateRelevanceValue(this.value)">
+                        <div class="range-value" id="relevanceValue">1.0 / 10</div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>🔬 Topic</label>
+                        <select id="topicFilter" onchange="updateSubtopics()">
+                            <option value="">All Topics</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>📑 Subtopic</label>
+                        <select id="subtopicFilter">
+                            <option value="">All Subtopics</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>📚 Source</label>
+                        <select id="sourceFilter">
+                            <option value="">All Sources</option>
+                            <option value="arxiv">arXiv</option>
+                            <option value="nasa-ads">NASA ADS</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="filter-actions">
+                    <button onclick="clearFilters()" class="clear-filters">
+                        <span>🗑️ Clear Filters</span>
+                    </button>
+                    <button onclick="applyFilters()">
+                        <span>✅ Apply Filters</span>
+                    </button>
+                </div>
+            </div>
+            
             <div class="button-group">
                 <button onclick="getSources()">
                     <span>🚀 Search Papers</span>
                 </button>
             </div>
-        </div>
+        </div>""
 
         <div id="results" class="results hidden"></div>
         
@@ -484,6 +631,8 @@
         let currentClaim = '';
         let currentOffset = 0;
         let allData = null;
+        let availableFilters = null;
+        let currentFilters = {};
 
         async function getSources() {
             const claimInput = document.getElementById('claimInput');
@@ -507,7 +656,7 @@
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ claim, limit: 10, offset: 0 })
+                    body: JSON.stringify({ claim, limit: 10, offset: 0, filters: currentFilters })
                 });
 
                 const data = await response.json();
@@ -540,7 +689,7 @@
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ claim: currentClaim, limit: 10, offset: currentOffset })
+                    body: JSON.stringify({ claim: currentClaim, limit: 10, offset: currentOffset, filters: currentFilters })
                 });
 
                 const data = await response.json();
@@ -631,6 +780,9 @@
                         
                         <div class="source-meta">
                             <span class="badge">PAPER</span>
+                            <span class="badge" style="background: ${source.source === 'nasa-ads' ? '#f59e0b' : '#3b82f6'};">
+                                ${source.source === 'nasa-ads' ? 'NASA ADS' : 'arXiv'}
+                            </span>
                             <span>${source.journal || 'arXiv preprint'}</span>
                             ${source.year ? `<span>• ${source.year}</span>` : ''}
                         </div>
@@ -648,11 +800,11 @@
                             </div>
                         ` : ''}
                         
-                        ${source.arxiv ? `
+                        ${source.paperId ? `
                             <div class="source-meta">
-                                <strong>arXiv:</strong> 
+                                <strong>${source.source === 'nasa-ads' ? 'Bibcode' : 'arXiv'}:</strong> 
                                 <a href="${source.url}" class="source-link" target="_blank">
-                                    ${source.arxiv}
+                                    ${source.paperId}
                                 </a>
                             </div>
                         ` : ''}
@@ -697,6 +849,85 @@
             }
         }
 
+        // Load available filters on page load
+        async function loadFilters() {
+            try {
+                const response = await fetch(API_URL.replace('/api/get-sources', '/api/filters'));
+                availableFilters = await response.json();
+                
+                // Populate topic dropdown
+                const topicSelect = document.getElementById('topicFilter');
+                Object.keys(availableFilters.topics).sort().forEach(topic => {
+                    const option = document.createElement('option');
+                    option.value = topic;
+                    option.textContent = topic.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    topicSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load filters:', error);
+            }
+        }
+        
+        function updateSubtopics() {
+            const topic = document.getElementById('topicFilter').value;
+            const subtopicSelect = document.getElementById('subtopicFilter');
+            
+            // Clear existing options
+            subtopicSelect.innerHTML = '<option value="">All Subtopics</option>';
+            
+            if (topic && availableFilters && availableFilters.topics[topic]) {
+                availableFilters.topics[topic].forEach(subtopic => {
+                    const option = document.createElement('option');
+                    option.value = subtopic;
+                    option.textContent = subtopic.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    subtopicSelect.appendChild(option);
+                });
+            }
+        }
+        
+        function toggleFilters() {
+            const panel = document.getElementById('filtersPanel');
+            const icon = document.getElementById('filterToggleIcon');
+            panel.classList.toggle('open');
+            icon.textContent = panel.classList.contains('open') ? '▲' : '▼';
+        }
+        
+        function updateRelevanceValue(value) {
+            document.getElementById('relevanceValue').textContent = `${parseFloat(value).toFixed(1)} / 10`;
+        }
+        
+        function clearFilters() {
+            document.getElementById('yearMin').value = '';
+            document.getElementById('yearMax').value = '';
+            document.getElementById('minRelevance').value = '1';
+            document.getElementById('topicFilter').value = '';
+            document.getElementById('subtopicFilter').value = '';
+            document.getElementById('sourceFilter').value = '';
+            updateRelevanceValue('1');
+            currentFilters = {};
+        }
+        
+        function applyFilters() {
+            currentFilters = {
+                yearMin: document.getElementById('yearMin').value || null,
+                yearMax: document.getElementById('yearMax').value || null,
+                minRelevance: document.getElementById('minRelevance').value || null,
+                topic: document.getElementById('topicFilter').value || null,
+                subtopic: document.getElementById('subtopicFilter').value || null,
+                source: document.getElementById('sourceFilter').value || null
+            };
+            
+            // Remove null values
+            Object.keys(currentFilters).forEach(key => {
+                if (currentFilters[key] === null) delete currentFilters[key];
+            });
+            
+            // Re-run search with filters
+            if (currentClaim) {
+                getSources();
+            }
+        }
+        
         // Allow Enter key to submit (Ctrl+Enter for new line)
         document.getElementById('claimInput').addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
@@ -704,6 +935,9 @@
                 getSources();
             }
         });
+        
+        // Load filters on page load
+        loadFilters();
     </script>
 </body>
 </html>
