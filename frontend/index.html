@@ -3,182 +3,483 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Module 2: Source Retrieval API</title>
+    <title>SpaceDigest - Scientific Paper Search Engine</title>
+    <meta name="description" content="Search through 972K+ space science papers with AI-powered classification">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5568d3;
+            --secondary: #764ba2;
+            --accent: #f093fb;
+            --bg-dark: #0f0f23;
+            --bg-card: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
             min-height: 100vh;
             padding: 20px;
+            color: var(--text-primary);
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 40px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            animation: fadeInDown 0.6s ease-out;
+        }
+        
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .logo-icon {
+            font-size: 48px;
         }
         
         h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
+            font-size: 48px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            letter-spacing: -1px;
         }
         
         .subtitle {
-            color: #666;
-            margin-bottom: 30px;
+            color: var(--text-secondary);
+            font-size: 18px;
+            font-weight: 400;
+            margin-bottom: 10px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .stat-number {
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
             font-size: 14px;
+        }
+        
+        .search-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            margin-bottom: 40px;
+            animation: fadeInUp 0.6s ease-out 0.2s both;
         }
         
         label {
             display: block;
-            margin-bottom: 10px;
-            color: #555;
+            margin-bottom: 12px;
+            color: var(--text-primary);
             font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .input-wrapper {
+            position: relative;
         }
         
         textarea {
             width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            padding: 18px 20px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
             font-size: 16px;
             font-family: inherit;
             resize: vertical;
-            min-height: 100px;
+            min-height: 120px;
+            background: rgba(15, 15, 35, 0.5);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
         }
         
         textarea:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--primary);
+            background: rgba(15, 15, 35, 0.8);
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+        
+        textarea::placeholder {
+            color: var(--text-secondary);
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
         }
         
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            flex: 1;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
             color: white;
             border: none;
-            padding: 15px 40px;
+            padding: 16px 32px;
             font-size: 16px;
             font-weight: 600;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
-            margin-top: 15px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, var(--primary-dark), var(--secondary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        button:hover::before {
+            opacity: 1;
         }
         
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button span {
+            position: relative;
+            z-index: 1;
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .results {
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 2px solid #e0e0e0;
+            animation: fadeInUp 0.6s ease-out;
         }
         
         .results.hidden { display: none; }
         
         .hierarchy {
-            background: #f0f4ff;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            padding: 25px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
         
-        .hierarchy h3 { color: #667eea; margin-bottom: 10px; }
-        .hierarchy-path { font-size: 14px; color: #666; }
-        .query-time { font-size: 13px; color: #888; margin-top: 8px; }
+        .hierarchy h3 { 
+            color: var(--primary); 
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .hierarchy-path { 
+            font-size: 15px; 
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+        
+        .hierarchy-path strong {
+            color: var(--text-primary);
+        }
+        
+        .query-time { 
+            font-size: 13px; 
+            color: var(--text-secondary);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .results-header h3 {
+            font-size: 24px;
+            color: var(--text-primary);
+        }
         
         .source-item {
-            background: #f9f9f9;
-            padding: 20px;
-            margin-bottom: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #764ba2;
+            background: var(--bg-card);
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.4s ease-out;
+        }
+        
+        .source-item:hover {
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
         }
         
         .source-title {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            line-height: 1.4;
         }
         
         .source-meta {
-            color: #666;
+            color: var(--text-secondary);
             font-size: 14px;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
         .source-abstract {
-            background: #fff;
-            padding: 10px;
-            border-radius: 4px;
+            background: rgba(15, 15, 35, 0.5);
+            padding: 15px;
+            border-radius: 10px;
             font-size: 14px;
-            color: #555;
-            margin-top: 10px;
-            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-top: 15px;
+            line-height: 1.7;
+            border-left: 3px solid var(--primary);
         }
         
         .source-link {
-            color: #667eea;
+            color: var(--primary);
             text-decoration: none;
             font-weight: 600;
+            transition: color 0.3s ease;
         }
         
-        .source-link:hover { text-decoration: underline; }
+        .source-link:hover { 
+            color: var(--accent);
+            text-decoration: underline;
+        }
         
         .badge {
             display: inline-block;
-            background: #764ba2;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
             color: white;
             padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+            border-radius: 6px;
+            font-size: 11px;
             font-weight: 600;
-            margin-right: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .error {
-            background: #ffe0e0;
-            color: #c00;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #c00;
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            animation: shake 0.5s ease;
         }
         
         .loading {
             text-align: center;
-            color: #667eea;
+            color: var(--primary);
             font-weight: 600;
+            padding: 40px;
+            font-size: 18px;
+        }
+        
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 30px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            border-top: 1px solid rgba(102, 126, 234, 0.1);
+        }
+        
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        @media (max-width: 768px) {
+            h1 { font-size: 32px; }
+            .subtitle { font-size: 16px; }
+            .search-card { padding: 25px; }
+            .stats { gap: 15px; }
+            .button-group { flex-direction: column; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔬 Module 2: Source Retrieval API</h1>
-        <p class="subtitle">Hierarchical Space Science Reference Database</p>
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon">🌌</span>
+            </div>
+            <h1>SpaceDigest</h1>
+            <p class="subtitle">AI-Powered Space Science Paper Search Engine</p>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-number">972K+</span>
+                    <span class="stat-label">Papers</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">14</span>
+                    <span class="stat-label">Topics</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">84</span>
+                    <span class="stat-label">Subtopics</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">&lt;50ms</span>
+                    <span class="stat-label">Search Speed</span>
+                </div>
+            </div>
+        </div>
 
-        <div class="input-section">
-            <label for="claimInput">Enter a scientific claim:</label>
-            <textarea 
-                id="claimInput" 
-                placeholder="Example: Neutron stars can exceed 5 solar masses"
-            ></textarea>
-            <button onclick="getSources()">Get Sources</button>
+        <div class="search-card">
+            <label for="claimInput">🔍 Enter your research query or scientific claim:</label>
+            <div class="input-wrapper">
+                <textarea 
+                    id="claimInput" 
+                    placeholder="Example: Neutron stars can exceed 5 solar masses&#10;Example: Evidence for dark matter in galaxy rotation curves&#10;Example: Exoplanet atmospheric composition detection methods"
+                ></textarea>
+            </div>
+            <div class="button-group">
+                <button onclick="getSources()">
+                    <span>🚀 Search Papers</span>
+                </button>
+            </div>
         </div>
 
         <div id="results" class="results hidden"></div>
+        
+        <div class="footer">
+            <p><strong>SpaceDigest</strong> - Microservice API for scientific paper retrieval</p>
+            <p>Powered by Turso Database • 972,325 papers indexed • Full-text search enabled</p>
+            <p style="margin-top: 10px;">
+                <a href="https://github.com/Jayom5797/SpaceDigest" target="_blank">GitHub</a> • 
+                API Endpoint: <code>/api/get-sources</code>
+            </p>
+        </div>
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000/api/get-sources';
+        // Environment-based API URL configuration
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000/api/get-sources'
+            : 'https://YOUR-RAILWAY-URL.railway.app/api/get-sources'; // UPDATE THIS ON MONDAY
 
         async function getSources() {
             const claimInput = document.getElementById('claimInput');
@@ -187,12 +488,12 @@
             const claim = claimInput.value.trim();
 
             if (!claim) {
-                alert('Please enter a scientific claim.');
+                alert('⚠️ Please enter a research query or scientific claim.');
                 return;
             }
 
             resultsDiv.classList.remove('hidden');
-            resultsDiv.innerHTML = '<p class="loading">Searching hierarchical index...</p>';
+            resultsDiv.innerHTML = '<p class="loading">🔎 Searching through 972K papers</p>';
 
             try {
                 const response = await fetch(API_URL, {
@@ -212,10 +513,11 @@
             } catch (error) {
                 resultsDiv.innerHTML = `
                     <div class="error">
-                        <strong>Error:</strong> ${error.message}
-                        <br><small>Make sure the server is running: npm start</small>
+                        <strong>❌ Error:</strong> ${error.message}
+                        <br><small>Make sure the backend server is running. Check console for details.</small>
                     </div>
                 `;
+                console.error('API Error:', error);
             }
         }
 
@@ -234,31 +536,33 @@
 
             let html = `
                 <div class="hierarchy">
-                    <h3>📚 Source Location</h3>
+                    <h3>📚 Classification Results</h3>
                     <div class="hierarchy-path">
-                        <strong>${data.domain}</strong> → 
-                        <strong>${data.topic}</strong> → 
-                        <strong>${data.subtopic}</strong>
+                        <strong>Domain:</strong> ${data.domain} → 
+                        <strong>Topic:</strong> ${data.topic} → 
+                        <strong>Subtopic:</strong> ${data.subtopic}
                     </div>
                     <div class="query-time">
-                        ⚡ Query time: ${data.queryTime}ms | 
-                        📊 Relevance: ${data.relevance} keyword matches |
-                        📄 ${data.totalSources} sources found
+                        <span>⚡ Query time: ${data.queryTime}ms</span>
+                        <span>📊 Relevance: ${data.relevance} keyword matches</span>
+                        <span>📄 ${data.totalSources} sources found</span>
                     </div>
                 </div>
                 
-                <h3 style="margin-bottom: 15px; color: #333;">📖 Relevant Sources</h3>
+                <div class="results-header">
+                    <h3>📖 Relevant Papers</h3>
+                </div>
             `;
 
-            data.sources.forEach(source => {
+            data.sources.forEach((source, index) => {
                 html += `
-                    <div class="source-item">
+                    <div class="source-item" style="animation-delay: ${index * 0.05}s">
                         <div class="source-title">${source.title}</div>
                         
                         <div class="source-meta">
                             <span class="badge">PAPER</span>
-                            ${source.journal || 'arXiv preprint'}
-                            ${source.publicationDate ? ` • ${source.publicationDate}` : ''}
+                            <span>${source.journal || 'arXiv preprint'}</span>
+                            ${source.year ? `<span>• ${source.year}</span>` : ''}
                         </div>
                         
                         <div class="source-meta">
@@ -286,7 +590,7 @@
                         ${source.abstract ? `
                             <div class="source-abstract">
                                 <strong>Abstract:</strong><br>
-                                ${source.abstract.substring(0, 300)}${source.abstract.length > 300 ? '...' : ''}
+                                ${source.abstract.substring(0, 400)}${source.abstract.length > 400 ? '...' : ''}
                             </div>
                         ` : ''}
                     </div>
@@ -295,6 +599,14 @@
 
             resultsDiv.innerHTML = html;
         }
+
+        // Allow Enter key to submit (Ctrl+Enter for new line)
+        document.getElementById('claimInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+                e.preventDefault();
+                getSources();
+            }
+        });
     </script>
 </body>
 </html>
