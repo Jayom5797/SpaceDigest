@@ -1,0 +1,17 @@
+# Git Commands to Run
+
+# 1. Commit all changes
+git commit -m "Migrate to Turso database and enhance frontend
+
+- Migrate 972K papers to Turso cloud database (free tier)
+- Add environment-based API URL configuration
+- Enhance frontend with modern dark theme UI
+- Add /api/get-sources endpoint for frontend compatibility
+- Update README with user-focused documentation
+- Add migration and verification scripts"
+
+# 2. Push to GitHub
+git push origin main
+
+# 3. Verify push succeeded
+git log --oneline -1

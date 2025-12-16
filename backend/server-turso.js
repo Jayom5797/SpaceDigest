@@ -220,10 +220,37 @@ app.get('/api/paper/:id', async (req, res) => {
   }
 });
 
-// Legacy endpoint for frontend compatibility
+// Calculate relevance score for a paper
+function calculateRelevance(paper, keywords, ftsRank) {
+  let score = 0;
+  
+  // FTS rank contribution (0-5 points, lower rank = higher score)
+  const rankScore = Math.max(0, 5 - (ftsRank * 0.1));
+  score += rankScore;
+  
+  // Keyword matches in title (0-3 points)
+  const titleLower = (paper.title || '').toLowerCase();
+  const titleMatches = keywords.filter(kw => titleLower.includes(kw)).length;
+  score += Math.min(3, titleMatches * 0.5);
+  
+  // Keyword matches in abstract (0-2 points)
+  const abstractLower = (paper.abstract || '').toLowerCase();
+  const abstractMatches = keywords.filter(kw => abstractLower.includes(kw)).length;
+  score += Math.min(2, abstractMatches * 0.3);
+  
+  // Normalize to 1-10 scale
+  return Math.min(10, Math.max(1, Math.round(score * 10) / 10));
+}
+
+// Legacy endpoint for frontend compatibility with relevance scoring and filters
 app.post('/api/get-sources', async (req, res) => {
   try {
-    const { claim } = req.body;
+    const { 
+      claim, 
+      limit = 50, 
+      offset = 0,
+      filters = {} 
+    } = req.body;
     
     if (!claim || typeof claim !== 'string') {
       return res.status(400).json({ 
@@ -245,13 +272,15 @@ app.post('/api/get-sources', async (req, res) => {
         subtopic: null,
         sources: [],
         totalSources: 0,
+        hasMore: false,
         queryTime: Date.now() - startTime,
         message: 'No keywords extracted from claim'
       });
     }
     
-    // Use FTS search with keywords
+    // Use FTS search with keywords - get more results for relevance scoring
     const query = keywords.join(' OR ');
+    const fetchLimit = 200; // Fetch more to calculate relevance
     
     const result = await db.execute({
       sql: `
@@ -268,9 +297,9 @@ app.post('/api/get-sources', async (req, res) => {
         JOIN papers p ON papers_fts.rowid = p.rowid
         WHERE papers_fts MATCH ?
         ORDER BY rank
-        LIMIT 50
+        LIMIT ?
       `,
-      args: [query]
+      args: [query, fetchLimit]
     });
     
     if (result.rows.length === 0) {
@@ -280,13 +309,14 @@ app.post('/api/get-sources', async (req, res) => {
         subtopic: null,
         sources: [],
         totalSources: 0,
+        hasMore: false,
         queryTime: Date.now() - startTime,
         message: 'No matching papers found'
       });
     }
     
-    // Parse JSON fields and format for frontend
-    const sources = result.rows.map(row => {
+    // Calculate relevance scores and format for frontend
+    const sourcesWithRelevance = result.rows.map((row, index) => {
       let authorsStr = '';
       try {
         const authorsData = JSON.parse(row.authors || '[]');
@@ -294,6 +324,8 @@ app.post('/api/get-sources', async (req, res) => {
       } catch {
         authorsStr = row.authors || 'Unknown';
       }
+      
+      const relevance = calculateRelevance(row, keywords, index);
       
       return {
         type: 'paper',
@@ -303,9 +335,17 @@ app.post('/api/get-sources', async (req, res) => {
         year: row.year,
         arxiv: row.id,
         url: `https://arxiv.org/abs/${row.id}`,
-        publicationDate: row.year ? `${row.year}` : null
+        publicationDate: row.year ? `${row.year}` : null,
+        relevance: relevance
       };
     });
+    
+    // Sort by relevance score (highest first)
+    sourcesWithRelevance.sort((a, b) => b.relevance - a.relevance);
+    
+    // Paginate results
+    const paginatedSources = sourcesWithRelevance.slice(offset, offset + limit);
+    const hasMore = offset + limit < sourcesWithRelevance.length;
     
     // Get most common topic from results
     const topicCounts = {};
@@ -328,10 +368,12 @@ app.post('/api/get-sources', async (req, res) => {
       topic: topTopic[0],
       subtopic: topSubtopic[0],
       relevance: keywords.length,
-      sources: sources,
-      totalSources: sources.length,
+      sources: paginatedSources,
+      totalSources: sourcesWithRelevance.length,
+      returnedSources: paginatedSources.length,
+      hasMore: hasMore,
       queryTime: Date.now() - startTime,
-      message: `Found ${sources.length} source(s) in ${topTopic[0]} → ${topSubtopic[0]}`
+      message: `Found ${sourcesWithRelevance.length} source(s) in ${topTopic[0]} → ${topSubtopic[0]}`
     });
     
   } catch (error) {

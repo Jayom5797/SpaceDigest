@@ -481,6 +481,10 @@
             ? 'http://localhost:3000/api/get-sources'
             : 'https://spacedigest-production.up.railway.app/api/get-sources';
 
+        let currentClaim = '';
+        let currentOffset = 0;
+        let allData = null;
+
         async function getSources() {
             const claimInput = document.getElementById('claimInput');
             const resultsDiv = document.getElementById('results');
@@ -492,6 +496,10 @@
                 return;
             }
 
+            // Reset for new search
+            currentClaim = claim;
+            currentOffset = 0;
+            
             resultsDiv.classList.remove('hidden');
             resultsDiv.innerHTML = '<p class="loading">🔎 Searching through 972K papers</p>';
 
@@ -499,7 +507,7 @@
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ claim })
+                    body: JSON.stringify({ claim, limit: 10, offset: 0 })
                 });
 
                 const data = await response.json();
@@ -508,7 +516,9 @@
                     throw new Error(data.error || 'Request failed');
                 }
 
-                displayResults(data);
+                allData = data;
+                currentOffset = 10;
+                displayResults(data, false);
 
             } catch (error) {
                 resultsDiv.innerHTML = `
@@ -521,7 +531,49 @@
             }
         }
 
-        function displayResults(data) {
+        async function loadMore() {
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = '<span>⏳ Loading...</span>';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ claim: currentClaim, limit: 10, offset: currentOffset })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Request failed');
+                }
+
+                currentOffset += 10;
+                displayResults(data, true);
+
+            } catch (error) {
+                alert('Error loading more results: ' + error.message);
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerHTML = '<span>📄 Show More Papers</span>';
+            }
+        }
+
+        function getRelevanceColor(score) {
+            if (score >= 8) return '#10b981'; // Green
+            if (score >= 6) return '#3b82f6'; // Blue
+            if (score >= 4) return '#f59e0b'; // Orange
+            return '#ef4444'; // Red
+        }
+
+        function getRelevanceLabel(score) {
+            if (score >= 8) return 'Highly Relevant';
+            if (score >= 6) return 'Very Relevant';
+            if (score >= 4) return 'Relevant';
+            return 'Somewhat Relevant';
+        }
+
+        function displayResults(data, append = false) {
             const resultsDiv = document.getElementById('results');
 
             if (!data.topic) {
@@ -534,30 +586,48 @@
                 return;
             }
 
-            let html = `
-                <div class="hierarchy">
-                    <h3>📚 Classification Results</h3>
-                    <div class="hierarchy-path">
-                        <strong>Domain:</strong> ${data.domain} → 
-                        <strong>Topic:</strong> ${data.topic} → 
-                        <strong>Subtopic:</strong> ${data.subtopic}
+            let html = '';
+            
+            if (!append) {
+                html = `
+                    <div class="hierarchy">
+                        <h3>📚 Classification Results</h3>
+                        <div class="hierarchy-path">
+                            <strong>Domain:</strong> ${data.domain} → 
+                            <strong>Topic:</strong> ${data.topic} → 
+                            <strong>Subtopic:</strong> ${data.subtopic}
+                        </div>
+                        <div class="query-time">
+                            <span>⚡ Query time: ${data.queryTime}ms</span>
+                            <span>📊 Relevance: ${data.relevance} keyword matches</span>
+                            <span>📄 ${data.totalSources} sources found</span>
+                        </div>
                     </div>
-                    <div class="query-time">
-                        <span>⚡ Query time: ${data.queryTime}ms</span>
-                        <span>📊 Relevance: ${data.relevance} keyword matches</span>
-                        <span>📄 ${data.totalSources} sources found</span>
+                    
+                    <div class="results-header">
+                        <h3>📖 Relevant Papers (sorted by relevance)</h3>
                     </div>
-                </div>
-                
-                <div class="results-header">
-                    <h3>📖 Relevant Papers</h3>
-                </div>
-            `;
+                    <div id="papers-container">
+                `;
+            }
 
             data.sources.forEach((source, index) => {
+                const relevanceColor = getRelevanceColor(source.relevance);
+                const relevanceLabel = getRelevanceLabel(source.relevance);
+                
                 html += `
                     <div class="source-item" style="animation-delay: ${index * 0.05}s">
-                        <div class="source-title">${source.title}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div class="source-title" style="flex: 1;">${source.title}</div>
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; margin-left: 15px;">
+                                <div style="background: ${relevanceColor}; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 14px; white-space: nowrap;">
+                                    ${source.relevance.toFixed(1)}/10
+                                </div>
+                                <div style="color: ${relevanceColor}; font-size: 11px; margin-top: 4px; font-weight: 500;">
+                                    ${relevanceLabel}
+                                </div>
+                            </div>
+                        </div>
                         
                         <div class="source-meta">
                             <span class="badge">PAPER</span>
@@ -597,7 +667,34 @@
                 `;
             });
 
-            resultsDiv.innerHTML = html;
+            if (!append) {
+                html += '</div>'; // Close papers-container
+                
+                if (data.hasMore) {
+                    html += `
+                        <div style="text-align: center; margin-top: 30px;">
+                            <button id="loadMoreBtn" onclick="loadMore()" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);">
+                                <span>📄 Show More Papers (${data.totalSources - data.returnedSources} remaining)</span>
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                resultsDiv.innerHTML = html;
+            } else {
+                // Append to existing results
+                const container = document.getElementById('papers-container');
+                container.insertAdjacentHTML('beforeend', html);
+                
+                // Update or remove "Show More" button
+                const loadMoreBtn = document.getElementById('loadMoreBtn');
+                if (data.hasMore) {
+                    loadMoreBtn.disabled = false;
+                    loadMoreBtn.innerHTML = `<span>📄 Show More Papers (${data.totalSources - currentOffset} remaining)</span>`;
+                } else {
+                    loadMoreBtn.remove();
+                }
+            }
         }
 
         // Allow Enter key to submit (Ctrl+Enter for new line)

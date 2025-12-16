@@ -1,0 +1,10 @@
+# Update frontend with Railway URL
+
+# 1. Stage the change
+git add frontend/index.html
+
+# 2. Commit
+git commit -m "Update frontend API URL to Railway backend"
+
+# 3. Push
+git push origin main
