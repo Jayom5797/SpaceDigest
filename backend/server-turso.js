@@ -471,7 +471,9 @@ app.post('/api/get-sources', async (req, res) => {
 
 // Get available filter options
 app.get('/api/filters', async (req, res) => {
+  const startTime = Date.now();
   try {
+    console.log('[/api/filters] Starting queries...');
     // Run all queries in parallel for better performance
     const [result, yearResult, sourceResult] = await Promise.all([
       productionDb.execute(`
@@ -500,6 +502,9 @@ app.get('/api/filters', async (req, res) => {
       topics[row.topic].push(row.subtopic);
     });
     
+    const queryTime = Date.now() - startTime;
+    console.log(`[/api/filters] Completed in ${queryTime}ms`);
+    
     res.json({
       topics: topics,
       yearRange: {
@@ -513,7 +518,8 @@ app.get('/api/filters', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Error in /api/filters:', error);
+    const queryTime = Date.now() - startTime;
+    console.error(`[/api/filters] Failed after ${queryTime}ms:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
