@@ -7,10 +7,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Status](https://img.shields.io/badge/Status-Production-success)](https://github.com/Jayom5797/SpaceDigest)
 [![API](https://img.shields.io/badge/API-REST-orange)](https://github.com/Jayom5797/SpaceDigest)
+[![Papers](https://img.shields.io/badge/Papers-972K+-blue)](https://github.com/Jayom5797/SpaceDigest)
 
 **Find the right research papers in seconds, not hours**
 
-[🚀 Live Demo](#) • [📖 Documentation](#) • [🔌 API](#use-as-a-microservice) • [💬 Support](#support)
+[🚀 Live Demo](https://spacedigest.vercel.app) • [📖 API Docs](#use-as-a-microservice) • [🔌 Backend](https://spacedigest-production.up.railway.app/health) • [💬 Support](#support)
 
 ---
 
@@ -82,7 +83,10 @@ SpaceDigest is an **intelligent research assistant** that helps scientists, stud
 | 🔍 **Intelligent Search** | Ask questions in natural language - no complex queries needed |
 | 🎯 **Smart Classification** | Automatically organized into 14 topics and 84 specialized subtopics |
 | ⚡ **Lightning Fast** | Get results in milliseconds with full-text search |
-| 🌐 **Always Available** | Cloud-hosted with 99.9% uptime |
+| 📊 **Relevance Scoring** | Papers ranked 1-10 based on keyword matching and FTS ranking |
+| 🎛️ **Advanced Filters** | Filter by year, topic, subtopic, source (arXiv/NASA ADS), and relevance |
+| 📄 **Progressive Loading** | Show top 10 results, load more on demand |
+| 🌐 **Always Available** | Cloud-hosted with 99.9% uptime (Railway + Turso) |
 | 🔓 **Open Access** | Free to use, no registration, no API limits |
 | 📱 **Responsive** | Works on desktop, tablet, and mobile |
 
@@ -173,7 +177,17 @@ curl -X POST https://your-api-url/api/get-sources \
 
 ```json
 {
-  "claim": "Your research question or scientific claim"
+  "claim": "Your research question or scientific claim",
+  "limit": 10,
+  "offset": 0,
+  "filters": {
+    "yearMin": 2020,
+    "yearMax": 2024,
+    "topic": "neutron-stars",
+    "subtopic": "mass-limits",
+    "source": "nasa-ads",
+    "minRelevance": 7.0
+  }
 }
 ```
 
@@ -189,12 +203,18 @@ curl -X POST https://your-api-url/api/get-sources \
       "title": "Testing dark decays of baryons in neutron stars",
       "authors": "Gordon Baym, D. H. Beck, Peter Geltenbort, Jessie Shelton",
       "abstract": "We demonstrate that the observation of neutron stars...",
-      "arxiv": "1802.08282",
+      "paperId": "1802.08282",
       "url": "https://arxiv.org/abs/1802.08282",
-      "year": 2018
+      "year": 2018,
+      "relevance": 8.5,
+      "source": "arxiv",
+      "topic": "neutron-stars",
+      "subtopic": "mass-limits"
     }
   ],
   "totalSources": 50,
+  "returnedSources": 10,
+  "hasMore": true,
   "queryTime": 45,
   "relevance": 5
 }
@@ -206,18 +226,32 @@ curl -X POST https://your-api-url/api/get-sources \
 <summary><b>JavaScript / Node.js</b></summary>
 
 ```javascript
-async function searchPapers(query) {
-  const response = await fetch('https://your-api-url/api/get-sources', {
+async function searchPapers(query, filters = {}) {
+  const response = await fetch('https://spacedigest-production.up.railway.app/api/get-sources', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ claim: query })
+    body: JSON.stringify({ 
+      claim: query,
+      limit: 10,
+      offset: 0,
+      filters: filters
+    })
   });
   return await response.json();
 }
 
-// Usage
+// Usage - Basic search
 const results = await searchPapers('Dark matter detection methods');
 console.log(`Found ${results.totalSources} papers in ${results.queryTime}ms`);
+
+// Usage - With filters
+const filtered = await searchPapers('Neutron stars', {
+  yearMin: 2020,
+  yearMax: 2024,
+  source: 'nasa-ads',
+  minRelevance: 7.0
+});
+console.log(`Found ${filtered.totalSources} highly relevant NASA ADS papers from 2020-2024`);
 ```
 
 </details>
@@ -228,16 +262,33 @@ console.log(`Found ${results.totalSources} papers in ${results.queryTime}ms`);
 ```python
 import requests
 
-def search_papers(query):
+def search_papers(query, filters=None):
+    payload = {
+        'claim': query,
+        'limit': 10,
+        'offset': 0
+    }
+    if filters:
+        payload['filters'] = filters
+    
     response = requests.post(
-        'https://your-api-url/api/get-sources',
-        json={'claim': query}
+        'https://spacedigest-production.up.railway.app/api/get-sources',
+        json=payload
     )
     return response.json()
 
-# Usage
+# Usage - Basic search
 results = search_papers('Dark matter detection methods')
 print(f"Found {results['totalSources']} papers in {results['queryTime']}ms")
+
+# Usage - With filters
+filtered = search_papers('Neutron stars', {
+    'yearMin': 2020,
+    'yearMax': 2024,
+    'source': 'nasa-ads',
+    'minRelevance': 7.0
+})
+print(f"Found {filtered['totalSources']} highly relevant NASA ADS papers")
 ```
 
 </details>
@@ -246,10 +297,25 @@ print(f"Found {results['totalSources']} papers in {results['queryTime']}ms")
 <summary><b>cURL</b></summary>
 
 ```bash
-curl -X POST https://your-api-url/api/get-sources \
+# Basic search
+curl -X POST https://spacedigest-production.up.railway.app/api/get-sources \
   -H "Content-Type: application/json" \
-  -d '{"claim": "Dark matter detection methods"}' \
+  -d '{"claim": "Dark matter detection methods", "limit": 10}' \
   | jq '.sources[0].title'
+
+# With filters
+curl -X POST https://spacedigest-production.up.railway.app/api/get-sources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "claim": "Neutron stars",
+    "limit": 10,
+    "filters": {
+      "yearMin": 2020,
+      "yearMax": 2024,
+      "source": "nasa-ads",
+      "minRelevance": 7.0
+    }
+  }' | jq '.sources[] | {title, relevance, source}'
 ```
 
 </details>
@@ -363,8 +429,8 @@ MIT License - Free to use for research, education, and commercial applications
 
 <div align="center">
 
-[![Website](https://img.shields.io/badge/Website-Live-success?style=for-the-badge)](https://your-url.vercel.app)
-[![API Docs](https://img.shields.io/badge/API-Documentation-blue?style=for-the-badge)](#use-as-a-microservice)
+[![Website](https://img.shields.io/badge/Website-Live-success?style=for-the-badge)](https://spacedigest.vercel.app)
+[![API](https://img.shields.io/badge/API-Live-blue?style=for-the-badge)](https://spacedigest-production.up.railway.app/health)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge)](https://github.com/Jayom5797/SpaceDigest)
 
 </div>
