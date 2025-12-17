@@ -9,7 +9,8 @@ const PORT = process.env.PORT || 3001;
 // Production database (for search/read operations)
 const productionDb = createClient({
   url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN
+  authToken: process.env.TURSO_AUTH_TOKEN,
+  intMode: 'number'
 });
 
 // Staging database (for collaborative paper addition) - optional
@@ -471,12 +472,24 @@ app.post('/api/get-sources', async (req, res) => {
 // Get available filter options
 app.get('/api/filters', async (req, res) => {
   try {
-    // Get all topics with their subtopics
-    const result = await productionDb.execute(`
-      SELECT DISTINCT topic, subtopic
-      FROM papers
-      ORDER BY topic, subtopic
-    `);
+    // Run all queries in parallel for better performance
+    const [result, yearResult, sourceResult] = await Promise.all([
+      productionDb.execute(`
+        SELECT DISTINCT topic, subtopic
+        FROM papers
+        ORDER BY topic, subtopic
+      `),
+      productionDb.execute(`
+        SELECT MIN(year) as min, MAX(year) as max
+        FROM papers
+        WHERE year IS NOT NULL
+      `),
+      productionDb.execute(`
+        SELECT source, COUNT(*) as count
+        FROM papers
+        GROUP BY source
+      `)
+    ]);
     
     // Group by topic
     const topics = {};
@@ -486,20 +499,6 @@ app.get('/api/filters', async (req, res) => {
       }
       topics[row.topic].push(row.subtopic);
     });
-    
-    // Get year range
-    const yearResult = await productionDb.execute(`
-      SELECT MIN(year) as min, MAX(year) as max
-      FROM papers
-      WHERE year IS NOT NULL
-    `);
-    
-    // Get source counts
-    const sourceResult = await productionDb.execute(`
-      SELECT source, COUNT(*) as count
-      FROM papers
-      GROUP BY source
-    `);
     
     res.json({
       topics: topics,
@@ -514,6 +513,7 @@ app.get('/api/filters', async (req, res) => {
       }))
     });
   } catch (error) {
+    console.error('Error in /api/filters:', error);
     res.status(500).json({ error: error.message });
   }
 });
