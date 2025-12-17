@@ -6,10 +6,16 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Turso client
-const db = createClient({
+// Production database (for search/read operations)
+const productionDb = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN
+});
+
+// Staging database (for collaborative paper addition)
+const stagingDb = createClient({
+  url: process.env.TURSO_STAGING_URL,
+  authToken: process.env.TURSO_STAGING_TOKEN
 });
 
 // Middleware
@@ -20,12 +26,19 @@ app.use(express.static('frontend'));
 // Health check
 app.get('/health', async (req, res) => {
   try {
-    const result = await db.execute('SELECT COUNT(*) as count FROM papers');
+    const prodResult = await productionDb.execute('SELECT COUNT(*) as count FROM papers');
+    const stagingResult = await stagingDb.execute('SELECT COUNT(*) as count FROM papers');
     res.json({
       status: 'ok',
       uptime: process.uptime(),
-      papers: result.rows[0].count,
-      database: 'turso'
+      production: {
+        papers: prodResult.rows[0].count,
+        database: 'turso-production'
+      },
+      staging: {
+        papers: stagingResult.rows[0].count,
+        database: 'turso-staging'
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -38,7 +51,7 @@ app.get('/health', async (req, res) => {
 // Get all topics with counts
 app.get('/api/topics', async (req, res) => {
   try {
-    const result = await db.execute(`
+    const result = await productionDb.execute(`
       SELECT 
         topic,
         subtopic,
@@ -118,7 +131,7 @@ app.get('/api/search', async (req, res) => {
     sql += ` ORDER BY rank LIMIT ?`;
     params.push(parseInt(limit));
     
-    const result = await db.execute({ sql, args: params });
+    const result = await productionDb.execute({ sql, args: params });
     
     // Parse JSON fields
     const papers = result.rows.map(row => ({
@@ -143,7 +156,7 @@ app.get('/api/papers/:topic/:subtopic', async (req, res) => {
     const { topic, subtopic } = req.params;
     const { limit = 50, offset = 0 } = req.query;
     
-    const result = await db.execute({
+    const result = await productionDb.execute({
       sql: `
         SELECT 
           id, title, abstract, authors, year, keywords
@@ -176,9 +189,9 @@ app.get('/api/papers/:topic/:subtopic', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const [total, topics, years] = await Promise.all([
-      db.execute('SELECT COUNT(*) as count FROM papers'),
-      db.execute('SELECT COUNT(DISTINCT topic) as count FROM papers'),
-      db.execute('SELECT MIN(year) as min, MAX(year) as max FROM papers WHERE year IS NOT NULL')
+      productionDb.execute('SELECT COUNT(*) as count FROM papers'),
+      productionDb.execute('SELECT COUNT(DISTINCT topic) as count FROM papers'),
+      productionDb.execute('SELECT MIN(year) as min, MAX(year) as max FROM papers WHERE year IS NOT NULL')
     ]);
     
     res.json({
@@ -199,7 +212,7 @@ app.get('/api/paper/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    const result = await db.execute({
+    const result = await productionDb.execute({
       sql: 'SELECT * FROM papers WHERE id = ?',
       args: [id]
     });
@@ -329,7 +342,7 @@ app.post('/api/get-sources', async (req, res) => {
     sql += ' ORDER BY rank LIMIT ?';
     args.push(fetchLimit);
     
-    const result = await db.execute({ sql, args });
+    const result = await productionDb.execute({ sql, args });
     
     if (result.rows.length === 0) {
       return res.json({
@@ -437,7 +450,7 @@ app.post('/api/get-sources', async (req, res) => {
 app.get('/api/filters', async (req, res) => {
   try {
     // Get all topics with their subtopics
-    const result = await db.execute(`
+    const result = await productionDb.execute(`
       SELECT DISTINCT topic, subtopic
       FROM papers
       ORDER BY topic, subtopic
@@ -453,14 +466,14 @@ app.get('/api/filters', async (req, res) => {
     });
     
     // Get year range
-    const yearResult = await db.execute(`
+    const yearResult = await productionDb.execute(`
       SELECT MIN(year) as min, MAX(year) as max
       FROM papers
       WHERE year IS NOT NULL
     `);
     
     // Get source counts
-    const sourceResult = await db.execute(`
+    const sourceResult = await productionDb.execute(`
       SELECT source, COUNT(*) as count
       FROM papers
       GROUP BY source
@@ -482,6 +495,206 @@ app.get('/api/filters', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Admin API: Add paper
+app.post('/api/admin/add-paper', async (req, res) => {
+  try {
+    const { paperId, topic, subtopic = 'other', source } = req.body;
+    
+    if (!paperId || !topic) {
+      return res.status(400).json({ error: 'paperId and topic are required' });
+    }
+    
+    // Check if paper already exists in staging DB
+    const existing = await stagingDb.execute({
+      sql: 'SELECT id FROM papers WHERE id = ?',
+      args: [paperId]
+    });
+    
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Paper already exists in database' });
+    }
+    
+    // Detect source from paper ID format
+    let detectedSource = source;
+    if (!detectedSource) {
+      // arXiv format: YYMM.NNNNN or archive/YYMMNNN
+      // NASA ADS format: YYYYJournal...Volume..Page (contains letters and dots)
+      detectedSource = /^(\d{4}\.\d{4,5}|[a-z-]+\/\d{7})$/i.test(paperId) ? 'arxiv' : 'nasa-ads';
+    }
+    
+    // Fetch paper metadata based on source
+    let paperData;
+    if (detectedSource === 'arxiv') {
+      paperData = await fetchArxivMetadata(paperId);
+    } else {
+      paperData = await fetchNASAADSMetadata(paperId);
+    }
+    
+    if (!paperData) {
+      return res.status(404).json({ error: 'Paper not found in source database' });
+    }
+    
+    // Insert paper into staging database
+    await stagingDb.execute({
+      sql: `
+        INSERT INTO papers (id, title, abstract, authors, year, topic, subtopic, keywords, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        paperId,
+        paperData.title,
+        paperData.abstract,
+        JSON.stringify(paperData.authors),
+        paperData.year,
+        topic,
+        subtopic,
+        JSON.stringify(paperData.keywords || []),
+        detectedSource
+      ]
+    });
+    
+    res.json({
+      success: true,
+      message: 'Paper added successfully',
+      paper: {
+        id: paperId,
+        title: paperData.title,
+        source: detectedSource,
+        topic,
+        subtopic
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin API: Get recent papers
+app.get('/api/admin/recent', async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+    
+    const result = await stagingDb.execute({
+      sql: `
+        SELECT id, title, topic, subtopic, source, year
+        FROM papers
+        ORDER BY rowid DESC
+        LIMIT ?
+      `,
+      args: [parseInt(limit)]
+    });
+    
+    res.json({
+      papers: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin API: Get statistics
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const [total] = await Promise.all([
+      stagingDb.execute('SELECT COUNT(*) as count FROM papers')
+    ]);
+    
+    res.json({
+      totalPapers: total.rows[0].count,
+      todayAdded: 0, // TODO: Track additions with timestamp
+      activeUsers: 1  // TODO: Track active sessions
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Helper: Fetch arXiv metadata
+async function fetchArxivMetadata(arxivId) {
+  try {
+    const response = await fetch(`http://export.arxiv.org/api/query?id_list=${arxivId}`);
+    const xml = await response.text();
+    
+    // Check if paper exists (look for entry tag)
+    if (!xml.includes('<entry>')) {
+      return null;
+    }
+    
+    // Extract entry content (skip feed-level title)
+    const entryMatch = xml.match(/<entry>([\s\S]*?)<\/entry>/);
+    if (!entryMatch) {
+      return null;
+    }
+    
+    const entry = entryMatch[1];
+    
+    // Parse entry fields
+    const titleMatch = entry.match(/<title>(.*?)<\/title>/s);
+    const summaryMatch = entry.match(/<summary>(.*?)<\/summary>/s);
+    const publishedMatch = entry.match(/<published>(.*?)<\/published>/);
+    const authorsMatch = entry.match(/<author>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?<\/author>/g);
+    
+    if (!titleMatch) {
+      return null;
+    }
+    
+    const authors = authorsMatch 
+      ? authorsMatch.map(a => a.match(/<name>(.*?)<\/name>/)[1].trim())
+      : [];
+    
+    const year = publishedMatch 
+      ? parseInt(publishedMatch[1].substring(0, 4))
+      : null;
+    
+    return {
+      title: titleMatch[1].trim().replace(/\n/g, ' ').replace(/\s+/g, ' '),
+      abstract: summaryMatch ? summaryMatch[1].trim().replace(/\n/g, ' ').replace(/\s+/g, ' ') : '',
+      authors,
+      year,
+      keywords: []
+    };
+  } catch (error) {
+    console.error('Error fetching arXiv metadata:', error);
+    return null;
+  }
+}
+
+// Helper: Fetch NASA ADS metadata
+async function fetchNASAADSMetadata(bibcode) {
+  try {
+    const apiKey = process.env.NASA_ADS_API_KEY;
+    if (!apiKey) {
+      throw new Error('NASA_ADS_API_KEY not configured');
+    }
+    
+    const response = await fetch(`https://api.adsabs.harvard.edu/v1/search/query?q=bibcode:${encodeURIComponent(bibcode)}&fl=title,abstract,author,year,keyword`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (!data.response || data.response.numFound === 0) {
+      return null;
+    }
+    
+    const doc = data.response.docs[0];
+    
+    return {
+      title: doc.title ? doc.title[0] : '',
+      abstract: doc.abstract || '',
+      authors: doc.author || [],
+      year: doc.year || null,
+      keywords: doc.keyword || []
+    };
+  } catch (error) {
+    console.error('Error fetching NASA ADS metadata:', error);
+    return null;
+  }
+}
 
 // Start server
 app.listen(PORT, () => {

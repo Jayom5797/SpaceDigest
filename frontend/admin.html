@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Adder - SpaceDigest</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #667eea;
+            --secondary: #764ba2;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --bg-dark: #0f0f23;
+            --bg-card: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b8;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            font-size: 36px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .nav-links a {
+            color: var(--primary);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: rgba(102, 126, 234, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+        
+        .card h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            background: rgba(15, 15, 35, 0.5);
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .status.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--success);
+        }
+        
+        .status.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-box {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+        
+        .recent-papers {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .paper-item {
+            background: rgba(15, 15, 35, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .paper-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .paper-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .filter-section {
+            background: rgba(102, 126, 234, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .filter-section h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 400;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 Research Adder</h1>
+            <p class="subtitle">Collaborative paper addition for SpaceDigest</p>
+            <div class="nav-links">
+                <a href="index.html">🏠 Home</a>
+                <a href="search.html">🔍 Search</a>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <!-- Add Paper Form -->
+            <div class="card">
+                <h2>📄 Add New Paper</h2>
+                
+                <div class="filter-section">
+                    <h3>🎯 Source Selection</h3>
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="sourceArxiv" checked>
+                            arXiv
+                        </label>
+                        <label>
+                            <input type="checkbox" id="sourceNASA" checked>
+                            NASA ADS
+                        </label>
+                    </div>
+                </div>
+                
+                <form id="addPaperForm">
+                    <div class="form-group">
+                        <label>Paper ID (arXiv ID or NASA ADS Bibcode)</label>
+                        <input type="text" id="paperId" placeholder="e.g., 2012.09864 or 2020ApJ...900..123S" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Topic</label>
+                        <select id="topic" required>
+                            <option value="">Select Topic</option>
+                            <option value="black-holes">Black Holes</option>
+                            <option value="neutron-stars">Neutron Stars</option>
+                            <option value="exoplanets">Exoplanets</option>
+                            <option value="dark-matter-and-dark-energy">Dark Matter & Dark Energy</option>
+                            <option value="galaxies">Galaxies</option>
+                            <option value="cosmology">Cosmology</option>
+                            <option value="stellar-astrophysics">Stellar Astrophysics</option>
+                            <option value="star-formation">Star Formation</option>
+                            <option value="solar-physics">Solar Physics</option>
+                            <option value="planetary-science">Planetary Science</option>
+                            <option value="small-bodies">Small Bodies</option>
+                            <option value="high-energy-astrophysics">High Energy Astrophysics</option>
+                            <option value="gravitational-waves">Gravitational Waves</option>
+                            <option value="instrumentation-and-methods">Instrumentation & Methods</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Subtopic (Optional)</label>
+                        <input type="text" id="subtopic" placeholder="e.g., mass-limits, formation">
+                    </div>
+                    
+                    <button type="submit" id="submitBtn">
+                        ➕ Add Paper
+                    </button>
+                </form>
+                
+                <div id="status" class="status"></div>
+            </div>
+            
+            <!-- Statistics & Recent Papers -->
+            <div class="card">
+                <h2>📊 Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-number" id="totalPapers">-</div>
+                        <div class="stat-label">Total Papers</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="todayAdded">-</div>
+                        <div class="stat-label">Added Today</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="activeUsers">-</div>
+                        <div class="stat-label">Active Users</div>
+                    </div>
+                </div>
+                
+                <h2 style="margin-top: 30px;">📝 Recent Additions</h2>
+                <div class="recent-papers" id="recentPapers">
+                    <p style="color: var(--text-secondary); text-align: center; padding: 20px;">
+                        Loading recent papers...
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bulk Add Section -->
+        <div class="card">
+            <h2>📦 Bulk Add Papers</h2>
+            <div class="form-group">
+                <label>Paper IDs (one per line)</label>
+                <textarea id="bulkIds" rows="5" placeholder="2012.09864&#10;2020ApJ...900..123S&#10;1802.08282"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Default Topic for All</label>
+                <select id="bulkTopic">
+                    <option value="">Select Topic</option>
+                    <option value="black-holes">Black Holes</option>
+                    <option value="neutron-stars">Neutron Stars</option>
+                    <option value="exoplanets">Exoplanets</option>
+                    <option value="dark-matter-and-dark-energy">Dark Matter & Dark Energy</option>
+                    <option value="galaxies">Galaxies</option>
+                    <option value="cosmology">Cosmology</option>
+                    <option value="stellar-astrophysics">Stellar Astrophysics</option>
+                    <option value="star-formation">Star Formation</option>
+                    <option value="solar-physics">Solar Physics</option>
+                    <option value="planetary-science">Planetary Science</option>
+                    <option value="small-bodies">Small Bodies</option>
+                    <option value="high-energy-astrophysics">High Energy Astrophysics</option>
+                    <option value="gravitational-waves">Gravitational Waves</option>
+                    <option value="instrumentation-and-methods">Instrumentation & Methods</option>
+                </select>
+            </div>
+            <button onclick="bulkAdd()">
+                ⚡ Bulk Add Papers
+            </button>
+            <div id="bulkStatus" class="status"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Detect environment
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000'
+            : 'https://spacedigest-production.up.railway.app';
+        
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/stats`);
+                const data = await response.json();
+                
+                document.getElementById('totalPapers').textContent = formatNumber(data.totalPapers);
+                document.getElementById('todayAdded').textContent = data.todayAdded;
+                document.getElementById('activeUsers').textContent = data.activeUsers;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Load recent papers
+        async function loadRecentPapers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/recent?limit=10`);
+                const data = await response.json();
+                
+                const container = document.getElementById('recentPapers');
+                
+                if (data.papers.length === 0) {
+                    container.innerHTML = `
+                        <p style="color: var(--text-secondary); text-align: center; padding: 20px;">
+                            No recent additions yet
+                        </p>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.papers.map(paper => `
+                    <div class="paper-item">
+                        <div class="paper-title">${escapeHtml(paper.title)}</div>
+                        <div class="paper-meta">
+                            ${paper.id} • ${paper.topic} → ${paper.subtopic} • ${paper.source} • ${paper.year || 'N/A'}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading recent papers:', error);
+                document.getElementById('recentPapers').innerHTML = `
+                    <p style="color: var(--error); text-align: center; padding: 20px;">
+                        Error loading recent papers
+                    </p>
+                `;
+            }
+        }
+        
+        // Add single paper
+        document.getElementById('addPaperForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const paperId = document.getElementById('paperId').value.trim();
+            const topic = document.getElementById('topic').value;
+            const subtopic = document.getElementById('subtopic').value.trim() || 'other';
+            const submitBtn = document.getElementById('submitBtn');
+            const status = document.getElementById('status');
+            
+            // Detect source from checkboxes
+            const sourceArxiv = document.getElementById('sourceArxiv').checked;
+            const sourceNASA = document.getElementById('sourceNASA').checked;
+            
+            let source = null;
+            if (sourceArxiv && !sourceNASA) source = 'arxiv';
+            if (sourceNASA && !sourceArxiv) source = 'nasa-ads';
+            // If both checked, let backend auto-detect
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Fetching metadata...';
+            status.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/add-paper`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        paperId,
+                        topic,
+                        subtopic,
+                        source
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to add paper');
+                }
+                
+                status.className = 'status success';
+                status.textContent = `✅ ${data.message}: "${data.paper.title.substring(0, 60)}..."`;
+                status.style.display = 'block';
+                
+                // Reset form
+                document.getElementById('paperId').value = '';
+                document.getElementById('subtopic').value = '';
+                
+                // Reload stats and recent papers
+                setTimeout(() => {
+                    loadStats();
+                    loadRecentPapers();
+                }, 500);
+                
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = `❌ ${error.message}`;
+                status.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '➕ Add Paper';
+            }
+        });
+        
+        // Bulk add papers
+        async function bulkAdd() {
+            const bulkIds = document.getElementById('bulkIds').value.trim();
+            const bulkTopic = document.getElementById('bulkTopic').value;
+            const bulkStatus = document.getElementById('bulkStatus');
+            
+            if (!bulkIds || !bulkTopic) {
+                bulkStatus.className = 'status error';
+                bulkStatus.textContent = '❌ Please provide paper IDs and select a topic';
+                bulkStatus.style.display = 'block';
+                return;
+            }
+            
+            const ids = bulkIds.split('\n').filter(id => id.trim());
+            
+            bulkStatus.className = 'status success';
+            bulkStatus.textContent = `⏳ Adding ${ids.length} papers...`;
+            bulkStatus.style.display = 'block';
+            
+            let successCount = 0;
+            let failCount = 0;
+            const errors = [];
+            
+            for (const paperId of ids) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/add-paper`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            paperId: paperId.trim(),
+                            topic: bulkTopic,
+                            subtopic: 'other'
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        const data = await response.json();
+                        failCount++;
+                        errors.push(`${paperId}: ${data.error}`);
+                    }
+                    
+                    // Update progress
+                    bulkStatus.textContent = `⏳ Progress: ${successCount + failCount}/${ids.length} (${successCount} success, ${failCount} failed)`;
+                    
+                } catch (error) {
+                    failCount++;
+                    errors.push(`${paperId}: ${error.message}`);
+                }
+            }
+            
+            // Show final result
+            if (failCount === 0) {
+                bulkStatus.className = 'status success';
+                bulkStatus.textContent = `✅ Successfully added all ${successCount} papers!`;
+            } else {
+                bulkStatus.className = 'status error';
+                bulkStatus.innerHTML = `
+                    ⚠️ Completed: ${successCount} success, ${failCount} failed<br>
+                    <small>${errors.slice(0, 5).join('<br>')}</small>
+                    ${errors.length > 5 ? `<br><small>...and ${errors.length - 5} more errors</small>` : ''}
+                `;
+            }
+            
+            document.getElementById('bulkIds').value = '';
+            
+            loadStats();
+            loadRecentPapers();
+        }
+        
+        // Helper functions
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Initialize
+        loadStats();
+        loadRecentPapers();
+    </script>
+</body>
+</html>
