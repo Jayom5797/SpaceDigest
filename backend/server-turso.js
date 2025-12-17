@@ -315,7 +315,7 @@ app.post('/api/get-sources', async (req, res) => {
     
     // Build SQL query with filters
     const query = keywords.join(' OR ');
-    const fetchLimit = 200;
+    const fetchLimit = 100; // Reduced from 200 to improve response time
     
     let sql = `
       SELECT 
