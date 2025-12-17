@@ -731,7 +731,7 @@ async function fetchNASAADSMetadata(bibcode) {
 }
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Server running on port ${PORT}`);
   console.log(`📊 Database: Turso (SQLite at the edge)`);
   console.log(`🔗 Health: http://localhost:${PORT}/health`);
