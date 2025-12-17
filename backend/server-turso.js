@@ -29,8 +29,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('frontend'));
 
-// Health check
-app.get('/health', async (req, res) => {
+// Simple health check (fast response for Railway)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Detailed health check with database stats
+app.get('/health/detailed', async (req, res) => {
   try {
     const prodResult = await productionDb.execute('SELECT COUNT(*) as count FROM papers');
     
