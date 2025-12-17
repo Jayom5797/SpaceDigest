@@ -12,11 +12,17 @@ const productionDb = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN
 });
 
-// Staging database (for collaborative paper addition)
-const stagingDb = createClient({
-  url: process.env.TURSO_STAGING_URL,
-  authToken: process.env.TURSO_STAGING_TOKEN
-});
+// Staging database (for collaborative paper addition) - optional
+let stagingDb = null;
+if (process.env.TURSO_STAGING_URL && process.env.TURSO_STAGING_TOKEN) {
+  stagingDb = createClient({
+    url: process.env.TURSO_STAGING_URL,
+    authToken: process.env.TURSO_STAGING_TOKEN
+  });
+  console.log('✅ Staging database connected');
+} else {
+  console.log('⚠️  Staging database not configured - admin features disabled');
+}
 
 // Middleware
 app.use(cors());
@@ -27,19 +33,30 @@ app.use(express.static('frontend'));
 app.get('/health', async (req, res) => {
   try {
     const prodResult = await productionDb.execute('SELECT COUNT(*) as count FROM papers');
-    const stagingResult = await stagingDb.execute('SELECT COUNT(*) as count FROM papers');
-    res.json({
+    
+    const response = {
       status: 'ok',
       uptime: process.uptime(),
       production: {
         papers: prodResult.rows[0].count,
         database: 'turso-production'
-      },
-      staging: {
+      }
+    };
+    
+    // Add staging info if available
+    if (stagingDb) {
+      const stagingResult = await stagingDb.execute('SELECT COUNT(*) as count FROM papers');
+      response.staging = {
         papers: stagingResult.rows[0].count,
         database: 'turso-staging'
-      }
-    });
+      };
+    } else {
+      response.staging = {
+        status: 'not-configured'
+      };
+    }
+    
+    res.json(response);
   } catch (error) {
     res.status(500).json({
       status: 'error',
@@ -498,6 +515,10 @@ app.get('/api/filters', async (req, res) => {
 
 // Admin API: Add paper
 app.post('/api/admin/add-paper', async (req, res) => {
+  if (!stagingDb) {
+    return res.status(503).json({ error: 'Staging database not configured' });
+  }
+  
   try {
     const { paperId, topic, subtopic = 'other', source } = req.body;
     
@@ -573,6 +594,10 @@ app.post('/api/admin/add-paper', async (req, res) => {
 
 // Admin API: Get recent papers
 app.get('/api/admin/recent', async (req, res) => {
+  if (!stagingDb) {
+    return res.status(503).json({ error: 'Staging database not configured' });
+  }
+  
   try {
     const { limit = 10 } = req.query;
     
@@ -596,6 +621,10 @@ app.get('/api/admin/recent', async (req, res) => {
 
 // Admin API: Get statistics
 app.get('/api/admin/stats', async (req, res) => {
+  if (!stagingDb) {
+    return res.status(503).json({ error: 'Staging database not configured' });
+  }
+  
   try {
     const [total] = await Promise.all([
       stagingDb.execute('SELECT COUNT(*) as count FROM papers')
