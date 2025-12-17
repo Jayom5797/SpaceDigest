@@ -474,24 +474,31 @@ app.get('/api/filters', async (req, res) => {
   const startTime = Date.now();
   try {
     console.log('[/api/filters] Starting queries...');
-    // Run all queries in parallel for better performance
-    const [result, yearResult, sourceResult] = await Promise.all([
-      productionDb.execute(`
-        SELECT DISTINCT topic, subtopic
-        FROM papers
-        ORDER BY topic, subtopic
-      `),
-      productionDb.execute(`
-        SELECT MIN(year) as min, MAX(year) as max
-        FROM papers
-        WHERE year IS NOT NULL
-      `),
-      productionDb.execute(`
-        SELECT source, COUNT(*) as count
-        FROM papers
-        GROUP BY source
-      `)
-    ]);
+    
+    // Test queries one by one to find which fails
+    console.log('[/api/filters] Query 1: topics...');
+    const result = await productionDb.execute(`
+      SELECT DISTINCT topic, subtopic
+      FROM papers
+      ORDER BY topic, subtopic
+    `);
+    console.log(`[/api/filters] Query 1 done: ${result.rows.length} rows`);
+    
+    console.log('[/api/filters] Query 2: year range...');
+    const yearResult = await productionDb.execute(`
+      SELECT MIN(year) as min, MAX(year) as max
+      FROM papers
+      WHERE year IS NOT NULL
+    `);
+    console.log(`[/api/filters] Query 2 done`);
+    
+    console.log('[/api/filters] Query 3: sources...');
+    const sourceResult = await productionDb.execute(`
+      SELECT source, COUNT(*) as count
+      FROM papers
+      GROUP BY source
+    `);
+    console.log(`[/api/filters] Query 3 done: ${sourceResult.rows.length} rows`);
     
     // Group by topic
     const topics = {};
