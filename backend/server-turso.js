@@ -475,11 +475,17 @@ app.get('/api/filters', async (req, res) => {
   try {
     console.log('[/api/filters] Starting queries...');
     
+    // First test: Can we query the table at all?
+    console.log('[/api/filters] Test: SELECT COUNT...');
+    const testResult = await productionDb.execute(`SELECT COUNT(*) as count FROM papers`);
+    console.log(`[/api/filters] Test done: ${testResult.rows[0].count} papers`);
+    
     // Test queries one by one to find which fails
     console.log('[/api/filters] Query 1: topics...');
     const result = await productionDb.execute(`
-      SELECT DISTINCT topic, subtopic
+      SELECT topic, subtopic
       FROM papers
+      GROUP BY topic, subtopic
       ORDER BY topic, subtopic
     `);
     console.log(`[/api/filters] Query 1 done: ${result.rows.length} rows`);
