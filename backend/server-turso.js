@@ -6,24 +6,12 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Production database (for search/read operations)
-const productionDb = createClient({
+// Single Turso database for all operations
+const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
   intMode: 'number'
 });
-
-// Staging database (for collaborative paper addition) - optional
-let stagingDb = null;
-if (process.env.TURSO_STAGING_URL && process.env.TURSO_STAGING_TOKEN) {
-  stagingDb = createClient({
-    url: process.env.TURSO_STAGING_URL,
-    authToken: process.env.TURSO_STAGING_TOKEN
-  });
-  console.log('✅ Staging database connected');
-} else {
-  console.log('⚠️  Staging database not configured - admin features disabled');
-}
 
 // Middleware
 app.use(cors());
@@ -38,31 +26,14 @@ app.get('/health', (req, res) => {
 // Detailed health check with database stats
 app.get('/health/detailed', async (req, res) => {
   try {
-    const prodResult = await productionDb.execute('SELECT COUNT(*) as count FROM papers');
+    const result = await db.execute('SELECT COUNT(*) as count FROM papers');
     
-    const response = {
+    res.json({
       status: 'ok',
       uptime: process.uptime(),
-      production: {
-        papers: prodResult.rows[0].count,
-        database: 'turso-production'
-      }
-    };
-    
-    // Add staging info if available
-    if (stagingDb) {
-      const stagingResult = await stagingDb.execute('SELECT COUNT(*) as count FROM papers');
-      response.staging = {
-        papers: stagingResult.rows[0].count,
-        database: 'turso-staging'
-      };
-    } else {
-      response.staging = {
-        status: 'not-configured'
-      };
-    }
-    
-    res.json(response);
+      papers: result.rows[0].count,
+      database: 'turso'
+    });
   } catch (error) {
     res.status(500).json({
       status: 'error',
@@ -74,7 +45,7 @@ app.get('/health/detailed', async (req, res) => {
 // Get all topics with counts
 app.get('/api/topics', async (req, res) => {
   try {
-    const result = await productionDb.execute(`
+    const result = await db.execute(`
       SELECT 
         topic,
         subtopic,
@@ -154,7 +125,7 @@ app.get('/api/search', async (req, res) => {
     sql += ` ORDER BY rank LIMIT ?`;
     params.push(parseInt(limit));
     
-    const result = await productionDb.execute({ sql, args: params });
+    const result = await db.execute({ sql, args: params });
     
     // Parse JSON fields
     const papers = result.rows.map(row => ({
@@ -179,7 +150,7 @@ app.get('/api/papers/:topic/:subtopic', async (req, res) => {
     const { topic, subtopic } = req.params;
     const { limit = 50, offset = 0 } = req.query;
     
-    const result = await productionDb.execute({
+    const result = await db.execute({
       sql: `
         SELECT 
           id, title, abstract, authors, year, keywords
@@ -212,9 +183,9 @@ app.get('/api/papers/:topic/:subtopic', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const [total, topics, years] = await Promise.all([
-      productionDb.execute('SELECT COUNT(*) as count FROM papers'),
-      productionDb.execute('SELECT COUNT(DISTINCT topic) as count FROM papers'),
-      productionDb.execute('SELECT MIN(year) as min, MAX(year) as max FROM papers WHERE year IS NOT NULL')
+      db.execute('SELECT COUNT(*) as count FROM papers'),
+      db.execute('SELECT COUNT(DISTINCT topic) as count FROM papers'),
+      db.execute('SELECT MIN(year) as min, MAX(year) as max FROM papers WHERE year IS NOT NULL')
     ]);
     
     res.json({
@@ -235,7 +206,7 @@ app.get('/api/paper/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    const result = await productionDb.execute({
+    const result = await db.execute({
       sql: 'SELECT * FROM papers WHERE id = ?',
       args: [id]
     });
@@ -365,7 +336,7 @@ app.post('/api/get-sources', async (req, res) => {
     sql += ' ORDER BY rank LIMIT ?';
     args.push(fetchLimit);
     
-    const result = await productionDb.execute({ sql, args });
+    const result = await db.execute({ sql, args });
     
     if (result.rows.length === 0) {
       return res.json({
@@ -469,80 +440,45 @@ app.post('/api/get-sources', async (req, res) => {
   }
 });
 
-// Get available filter options
+// Get available filter options (hardcoded for performance)
 app.get('/api/filters', async (req, res) => {
-  const startTime = Date.now();
   try {
-    console.log('[/api/filters] Starting queries...');
-    
-    // First test: Can we query the table at all?
-    console.log('[/api/filters] Test: SELECT COUNT...');
-    const testResult = await productionDb.execute(`SELECT COUNT(*) as count FROM papers`);
-    console.log(`[/api/filters] Test done: ${testResult.rows[0].count} papers`);
-    
-    // Test queries one by one to find which fails
-    console.log('[/api/filters] Query 1: topics...');
-    const result = await productionDb.execute(`
-      SELECT topic, subtopic
-      FROM papers
-      GROUP BY topic, subtopic
-      ORDER BY topic, subtopic
-    `);
-    console.log(`[/api/filters] Query 1 done: ${result.rows.length} rows`);
-    
-    console.log('[/api/filters] Query 2: year range...');
-    const yearResult = await productionDb.execute(`
-      SELECT MIN(year) as min, MAX(year) as max
-      FROM papers
-      WHERE year IS NOT NULL
-    `);
-    console.log(`[/api/filters] Query 2 done`);
-    
-    console.log('[/api/filters] Query 3: sources...');
-    const sourceResult = await productionDb.execute(`
-      SELECT source, COUNT(*) as count
-      FROM papers
-      GROUP BY source
-    `);
-    console.log(`[/api/filters] Query 3 done: ${sourceResult.rows.length} rows`);
-    
-    // Group by topic
-    const topics = {};
-    result.rows.forEach(row => {
-      if (!topics[row.topic]) {
-        topics[row.topic] = [];
-      }
-      topics[row.topic].push(row.subtopic);
-    });
-    
-    const queryTime = Date.now() - startTime;
-    console.log(`[/api/filters] Completed in ${queryTime}ms`);
+    // Hardcoded topics - these don't change often
+    const topics = {
+      "black-holes": ["mass-limits", "formation", "detection", "other"],
+      "neutron-stars": ["mass-limits", "equation-of-state", "pulsars", "other"],
+      "exoplanets": ["detection", "atmospheres", "habitability", "other"],
+      "dark-matter-and-dark-energy": ["observations", "theory", "simulations", "other"],
+      "galaxies": ["formation", "evolution", "structure", "other"],
+      "cosmology": ["cmb", "large-scale-structure", "inflation", "other"],
+      "stellar-astrophysics": ["evolution", "nucleosynthesis", "binaries", "other"],
+      "star-formation": ["molecular-clouds", "protostars", "disks", "other"],
+      "solar-physics": ["solar-activity", "corona", "solar-wind", "other"],
+      "planetary-science": ["surfaces", "interiors", "atmospheres", "other"],
+      "small-bodies": ["asteroids", "comets", "kuiper-belt", "other"],
+      "high-energy-astrophysics": ["x-rays", "gamma-rays", "cosmic-rays", "other"],
+      "gravitational-waves": ["detection", "sources", "data-analysis", "other"],
+      "instrumentation-and-methods": ["telescopes", "detectors", "data-processing", "other"]
+    };
     
     res.json({
       topics: topics,
       yearRange: {
-        min: yearResult.rows[0].min,
-        max: yearResult.rows[0].max
+        min: 1992,
+        max: 2025
       },
-      sources: sourceResult.rows.map(r => ({
-        value: r.source,
-        label: r.source === 'arxiv' ? 'arXiv' : 'NASA ADS',
-        count: r.count
-      }))
+      sources: [
+        { value: 'arxiv', label: 'arXiv', count: 781980 },
+        { value: 'nasa-ads', label: 'NASA ADS', count: 190345 }
+      ]
     });
   } catch (error) {
-    const queryTime = Date.now() - startTime;
-    console.error(`[/api/filters] Failed after ${queryTime}ms:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Admin API: Add paper
 app.post('/api/admin/add-paper', async (req, res) => {
-  if (!stagingDb) {
-    return res.status(503).json({ error: 'Staging database not configured' });
-  }
-  
   try {
     const { paperId, topic, subtopic = 'other', source } = req.body;
     
@@ -551,7 +487,7 @@ app.post('/api/admin/add-paper', async (req, res) => {
     }
     
     // Check if paper already exists in staging DB
-    const existing = await stagingDb.execute({
+    const existing = await db.execute({
       sql: 'SELECT id FROM papers WHERE id = ?',
       args: [paperId]
     });
@@ -581,7 +517,7 @@ app.post('/api/admin/add-paper', async (req, res) => {
     }
     
     // Insert paper into staging database
-    await stagingDb.execute({
+    await db.execute({
       sql: `
         INSERT INTO papers (id, title, abstract, authors, year, topic, subtopic, keywords, source)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -618,14 +554,10 @@ app.post('/api/admin/add-paper', async (req, res) => {
 
 // Admin API: Get recent papers
 app.get('/api/admin/recent', async (req, res) => {
-  if (!stagingDb) {
-    return res.status(503).json({ error: 'Staging database not configured' });
-  }
-  
   try {
     const { limit = 10 } = req.query;
     
-    const result = await stagingDb.execute({
+    const result = await db.execute({
       sql: `
         SELECT id, title, topic, subtopic, source, year
         FROM papers
@@ -645,13 +577,9 @@ app.get('/api/admin/recent', async (req, res) => {
 
 // Admin API: Get statistics
 app.get('/api/admin/stats', async (req, res) => {
-  if (!stagingDb) {
-    return res.status(503).json({ error: 'Staging database not configured' });
-  }
-  
   try {
     const [total] = await Promise.all([
-      stagingDb.execute('SELECT COUNT(*) as count FROM papers')
+      db.execute('SELECT COUNT(*) as count FROM papers')
     ]);
     
     res.json({
