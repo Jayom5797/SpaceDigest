@@ -725,6 +725,9 @@
                 // Enable verify button
                 const verifyBtn = document.getElementById('verifyBtn');
                 verifyBtn.disabled = false;
+                
+                // Auto-trigger verification after search completes
+                setTimeout(() => verifyClaim(), 500);
 
             } catch (error) {
                 resultsDiv.innerHTML = `
@@ -753,9 +756,9 @@
             verificationDiv.classList.remove('hidden');
             verificationDiv.innerHTML = `
                 <div class="search-card" style="text-align: center;">
-                    <p class="loading">🤖 AI is analyzing top 10 papers with Google Gemini</p>
+                    <p class="loading">🤖 AI is analyzing papers with local Ollama</p>
                     <p style="color: var(--text-secondary); font-size: 14px; margin-top: 10px;">
-                        This takes 6-9 seconds...
+                        This takes 60-120 seconds (local CPU processing)...
                     </p>
                 </div>
             `;

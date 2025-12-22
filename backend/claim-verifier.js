@@ -3,7 +3,7 @@ const { Ollama } = require('ollama');
 class ClaimVerifier {
   constructor(ollamaHost = 'http://localhost:11434') {
     this.ollama = new Ollama({ host: ollamaHost });
-    this.model = 'llama3.2'; // Fast, good quality
+    this.model = 'llama3.2'; // Using 3B model (only one installed)
     this.cache = new Map();
   }
 
@@ -22,23 +22,17 @@ class ClaimVerifier {
       ? paper.authors.join(', ') 
       : (paper.authors || 'Unknown');
 
-    const prompt = `You are a scientific claim verification expert. Analyze if this paper supports, contradicts, or is neutral to the given claim.
+    const prompt = `Analyze if this paper supports or contradicts the claim.
 
 CLAIM: "${claim}"
+PAPER: ${paper.title}
+ABSTRACT: ${paper.abstract.substring(0, 500)}
 
-PAPER:
-Title: ${paper.title}
-Abstract: ${paper.abstract}
-Year: ${paper.year}
-Authors: ${authorsStr}
+Respond with ONLY this JSON (no extra text):
+{"stance":"supports","confidence":80,"evidence":"quote","reasoning":"why"}
 
-Respond ONLY with valid JSON (no markdown, no explanation):
-{
-  "stance": "supports" | "contradicts" | "neutral" | "insufficient",
-  "confidence": 0-100,
-  "evidence": "Brief quote or summary of relevant evidence from abstract",
-  "reasoning": "One sentence explaining your assessment"
-}`;
+stance: supports/contradicts/neutral/insufficient
+confidence: 0-100`;
 
     try {
       const response = await this.ollama.generate({
@@ -46,20 +40,29 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         prompt: prompt,
         stream: false,
         options: {
-          temperature: 0.3,
-          num_predict: 300
+          temperature: 0.1,
+          num_predict: 150 // Shorter responses = more reliable JSON
         }
       });
       
-      const text = response.response;
+      let text = response.response.trim();
+      
+      // Remove markdown code blocks if present
+      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       
       // Parse JSON from response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
+        console.error(`Raw response for ${paperId}:`, text.substring(0, 200));
         throw new Error('Invalid JSON response from LLM');
       }
       
       const analysis = JSON.parse(jsonMatch[0]);
+      
+      // Validate required fields
+      if (!analysis.stance || typeof analysis.confidence !== 'number') {
+        throw new Error('Missing required fields in JSON response');
+      }
       
       // Add paper metadata
       analysis.paperId = paperId;
@@ -130,15 +133,20 @@ ${supporting.slice(0, 3).map(a => `- ${a.paperTitle} (${a.paperYear}): ${a.evide
 CONTRADICTING EVIDENCE:
 ${contradicting.slice(0, 3).map(a => `- ${a.paperTitle} (${a.paperYear}): ${a.evidence}`).join('\n')}
 
-Respond ONLY with valid JSON (no markdown, no explanation):
+CRITICAL: Respond with ONLY a JSON object, nothing else:
 {
-  "verificationScore": 0-100,
-  "verdict": "Strongly Supported" | "Supported" | "Inconclusive" | "Contradicted" | "Strongly Contradicted",
-  "confidence": "High" | "Medium" | "Low",
-  "summary": "2-3 sentence summary explaining the verdict and score",
+  "verificationScore": 75,
+  "verdict": "Supported",
+  "confidence": "High",
+  "summary": "2-3 sentence summary",
   "keyFindings": ["finding 1", "finding 2", "finding 3"],
-  "limitations": "Brief note on limitations of this analysis"
-}`;
+  "limitations": "Brief note on limitations"
+}
+
+Valid verdicts: "Strongly Supported", "Supported", "Inconclusive", "Contradicted", "Strongly Contradicted"
+Valid confidence: "High", "Medium", "Low"
+
+JSON response:`;
 
     try {
       const response = await this.ollama.generate({
@@ -146,15 +154,19 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         prompt: prompt,
         stream: false,
         options: {
-          temperature: 0.3,
+          temperature: 0.1,
           num_predict: 500
         }
       });
       
-      const text = response.response;
+      let text = response.response.trim();
+      
+      // Remove markdown code blocks if present
+      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
+        console.error('Summary generation failed - invalid JSON');
         throw new Error('Invalid JSON response from LLM');
       }
       
@@ -184,7 +196,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
    */
   async verifyClaim(claim, papers, options = {}) {
     const {
-      maxPapers = 10,
+      maxPapers = 5, // Reduced from 10 to 5
       batchSize = 3,
       onProgress = null
     } = options;
