@@ -1,10 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@libsql/client');
+const ClaimVerifier = require('./claim-verifier');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Initialize Claim Verifier with Ollama
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
+const verifier = new ClaimVerifier(OLLAMA_HOST);
+
+console.log(`✅ Claim verifier initialized (Ollama: ${OLLAMA_HOST})`);
 
 // Single Turso database for all operations
 const db = createClient({
@@ -676,6 +683,38 @@ async function fetchNASAADSMetadata(bibcode) {
     return null;
   }
 }
+
+// Claim Verification Endpoint (Module 3 - Ollama)
+app.post('/api/verify-claim', async (req, res) => {
+  try {
+    const { claim, papers, maxPapers = 10 } = req.body;
+
+    if (!claim || typeof claim !== 'string') {
+      return res.status(400).json({ error: 'Claim is required' });
+    }
+
+    if (!papers || !Array.isArray(papers) || papers.length === 0) {
+      return res.status(400).json({ error: 'Papers array is required' });
+    }
+
+    console.log(`[Verification] Starting for claim: "${claim}" with ${papers.length} papers`);
+
+    const result = await verifier.verifyClaim(claim, papers, {
+      maxPapers,
+      batchSize: 3,
+      onProgress: (progress) => {
+        console.log(`[Verification] ${progress.stage}: ${progress.current}/${progress.total}`);
+      }
+    });
+
+    console.log(`[Verification] Completed in ${result.processingTimeMs}ms - Score: ${result.verificationScore}%`);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[Verification] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {

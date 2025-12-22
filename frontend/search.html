@@ -642,9 +642,16 @@
                 <button onclick="getSources()">
                     <span>🚀 Search Papers</span>
                 </button>
+                <button onclick="verifyClaim()" id="verifyBtn" style="background: linear-gradient(135deg, #10b981, #059669);" disabled>
+                    <span>🔬 Verify Claim with AI</span>
+                </button>
             </div>
-        </div>""
+        </div>
 
+        <!-- Verification Results Section -->
+        <div id="verificationResults" class="results hidden"></div>
+
+        <!-- Paper Results Section -->
         <div id="results" class="results hidden"></div>
         
         <div class="footer">
@@ -668,10 +675,12 @@
         let allData = null;
         let availableFilters = null;
         let currentFilters = {};
+        let currentPapers = [];
 
         async function getSources() {
             const claimInput = document.getElementById('claimInput');
             const resultsDiv = document.getElementById('results');
+            const verificationDiv = document.getElementById('verificationResults');
             
             const claim = claimInput.value.trim();
 
@@ -683,6 +692,14 @@
             // Reset for new search
             currentClaim = claim;
             currentOffset = 0;
+            currentPapers = [];
+            
+            // Hide verification results
+            verificationDiv.classList.add('hidden');
+            verificationDiv.innerHTML = '';
+            
+            // Disable verify button
+            document.getElementById('verifyBtn').disabled = true;
             
             resultsDiv.classList.remove('hidden');
             resultsDiv.innerHTML = '<p class="loading">🔎 Searching through 972K papers</p>';
@@ -702,7 +719,12 @@
 
                 allData = data;
                 currentOffset = 10;
+                currentPapers = data.sources; // Store papers for verification
                 displayResults(data, false);
+                
+                // Enable verify button
+                const verifyBtn = document.getElementById('verifyBtn');
+                verifyBtn.disabled = false;
 
             } catch (error) {
                 resultsDiv.innerHTML = `
@@ -713,6 +735,200 @@
                 `;
                 console.error('API Error:', error);
             }
+        }
+
+        async function verifyClaim() {
+            if (!currentClaim || currentPapers.length === 0) {
+                alert('⚠️ Please search for papers first before verifying.');
+                return;
+            }
+
+            const verificationDiv = document.getElementById('verificationResults');
+            const verifyBtn = document.getElementById('verifyBtn');
+            
+            // Disable button and show loading
+            verifyBtn.disabled = true;
+            verifyBtn.innerHTML = '<span>⏳ Analyzing...</span>';
+            
+            verificationDiv.classList.remove('hidden');
+            verificationDiv.innerHTML = `
+                <div class="search-card" style="text-align: center;">
+                    <p class="loading">🤖 AI is analyzing top 10 papers with Google Gemini</p>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-top: 10px;">
+                        This takes 6-9 seconds...
+                    </p>
+                </div>
+            `;
+
+            try {
+                const VERIFY_URL = API_URL.replace('/api/get-sources', '/api/verify-claim');
+                
+                const response = await fetch(VERIFY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        claim: currentClaim,
+                        papers: currentPapers,
+                        maxPapers: 10
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Verification failed');
+                }
+
+                displayVerificationResults(result);
+                
+                // Re-enable button
+                verifyBtn.disabled = false;
+                verifyBtn.innerHTML = '<span>🔬 Verify Claim with AI</span>';
+
+            } catch (error) {
+                verificationDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Verification Error:</strong> ${error.message}
+                        <br><small>Make sure GEMINI_API_KEY is configured in backend.</small>
+                    </div>
+                `;
+                verifyBtn.disabled = false;
+                verifyBtn.innerHTML = '<span>🔬 Verify Claim with AI</span>';
+                console.error('Verification Error:', error);
+            }
+        }
+
+        function getScoreColor(score) {
+            if (score >= 80) return '#10b981'; // Green
+            if (score >= 60) return '#3b82f6'; // Blue
+            if (score >= 40) return '#f59e0b'; // Orange
+            return '#ef4444'; // Red
+        }
+
+        function displayVerificationResults(result) {
+            const verificationDiv = document.getElementById('verificationResults');
+            const scoreColor = getScoreColor(result.verificationScore);
+            
+            const html = `
+                <div class="search-card" style="border: 2px solid ${scoreColor};">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <h2 style="color: var(--text-primary); margin-bottom: 10px;">🔬 AI Verification Results</h2>
+                        <p style="color: var(--text-secondary); font-size: 14px;">
+                            Analyzed ${result.papersAnalyzed} papers in ${(result.processingTimeMs / 1000).toFixed(1)}s
+                        </p>
+                    </div>
+                    
+                    <!-- Score Circle -->
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div style="display: inline-block; position: relative; width: 180px; height: 180px;">
+                            <svg width="180" height="180" style="transform: rotate(-90deg);">
+                                <circle cx="90" cy="90" r="75" fill="none" stroke="rgba(102, 126, 234, 0.2)" stroke-width="15"/>
+                                <circle cx="90" cy="90" r="75" fill="none" stroke="${scoreColor}" stroke-width="15"
+                                    stroke-dasharray="${(result.verificationScore / 100) * 471} 471"
+                                    stroke-linecap="round"
+                                    style="transition: stroke-dasharray 1s ease;"/>
+                            </svg>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                                <div style="font-size: 48px; font-weight: 700; color: ${scoreColor};">
+                                    ${result.verificationScore}%
+                                </div>
+                                <div style="font-size: 14px; color: var(--text-secondary); margin-top: 5px;">
+                                    Verification Score
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Verdict -->
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div style="display: inline-block; background: ${scoreColor}; color: white; padding: 12px 30px; border-radius: 25px; font-size: 20px; font-weight: 600;">
+                            ${result.verdict}
+                        </div>
+                        <div style="margin-top: 10px; color: var(--text-secondary); font-size: 14px;">
+                            Confidence: <strong style="color: var(--text-primary);">${result.confidence}</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary -->
+                    <div style="background: rgba(15, 15, 35, 0.5); padding: 20px; border-radius: 12px; border-left: 4px solid ${scoreColor}; margin-bottom: 25px;">
+                        <h3 style="color: var(--text-primary); margin-bottom: 12px; font-size: 18px;">📝 Summary</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.7; font-size: 15px;">
+                            ${result.summary}
+                        </p>
+                    </div>
+                    
+                    <!-- Key Findings -->
+                    ${result.keyFindings && result.keyFindings.length > 0 ? `
+                        <div style="background: rgba(15, 15, 35, 0.5); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                            <h3 style="color: var(--text-primary); margin-bottom: 15px; font-size: 18px;">🔑 Key Findings</h3>
+                            <ul style="color: var(--text-secondary); line-height: 1.8; font-size: 14px; padding-left: 20px;">
+                                ${result.keyFindings.map(finding => `<li style="margin-bottom: 8px;">${finding}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Limitations -->
+                    ${result.limitations ? `
+                        <div style="background: rgba(239, 68, 68, 0.1); padding: 15px; border-radius: 10px; border: 1px solid rgba(239, 68, 68, 0.3);">
+                            <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.6;">
+                                <strong style="color: var(--error);">⚠️ Limitations:</strong> ${result.limitations}
+                            </p>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Detailed Analyses -->
+                    ${result.analyses && result.analyses.length > 0 ? `
+                        <details style="margin-top: 25px;">
+                            <summary style="cursor: pointer; color: var(--primary); font-weight: 600; font-size: 16px; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+                                📊 View Detailed Paper Analyses (${result.analyses.length} papers)
+                            </summary>
+                            <div style="margin-top: 15px;">
+                                ${result.analyses.map((analysis, index) => {
+                                    const stanceColor = analysis.stance === 'supports' ? '#10b981' : 
+                                                       analysis.stance === 'contradicts' ? '#ef4444' : '#6b7280';
+                                    const stanceIcon = analysis.stance === 'supports' ? '✅' : 
+                                                      analysis.stance === 'contradicts' ? '❌' : '➖';
+                                    
+                                    return `
+                                        <div style="background: rgba(15, 15, 35, 0.5); padding: 15px; border-radius: 10px; margin-bottom: 12px; border-left: 3px solid ${stanceColor};">
+                                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                                <div style="flex: 1;">
+                                                    <strong style="color: var(--text-primary); font-size: 14px;">${analysis.paperTitle}</strong>
+                                                    <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">
+                                                        ${analysis.paperYear} • Relevance: ${analysis.relevanceScore.toFixed(1)}/10
+                                                    </div>
+                                                </div>
+                                                <div style="text-align: right; margin-left: 15px;">
+                                                    <div style="background: ${stanceColor}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap;">
+                                                        ${stanceIcon} ${analysis.stance.toUpperCase()}
+                                                    </div>
+                                                    <div style="color: var(--text-secondary); font-size: 11px; margin-top: 4px;">
+                                                        ${analysis.confidence}% confident
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            ${analysis.evidence ? `
+                                                <div style="background: rgba(0, 0, 0, 0.3); padding: 10px; border-radius: 6px; margin-top: 10px;">
+                                                    <div style="color: var(--text-secondary); font-size: 12px; line-height: 1.6;">
+                                                        <strong style="color: var(--text-primary);">Evidence:</strong> ${analysis.evidence}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                            ${analysis.reasoning ? `
+                                                <div style="color: var(--text-secondary); font-size: 12px; margin-top: 8px; font-style: italic;">
+                                                    ${analysis.reasoning}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+                </div>
+            `;
+            
+            verificationDiv.innerHTML = html;
         }
 
         async function loadMore() {
