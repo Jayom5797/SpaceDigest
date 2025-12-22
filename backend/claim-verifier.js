@@ -1,15 +1,12 @@
-const { Ollama } = require('ollama');
+const Groq = require('groq-sdk');
 
 class ClaimVerifier {
-  constructor(ollamaHost = 'http://localhost:11434') {
-    this.ollama = new Ollama({ host: ollamaHost });
-    this.model = 'llama3.2'; // Using 3B model (only one installed)
+  constructor(apiKey) {
+    this.groq = new Groq({ apiKey });
+    this.model = 'llama-3.3-70b-versatile'; // Latest fast model
     this.cache = new Map();
   }
 
-  /**
-   * Analyze a single paper's support for a claim
-   */
   async analyzePaper(paper, claim) {
     const paperId = paper.id || paper.paperId || 'unknown';
     const cacheKey = `${paperId}-${claim}`;
@@ -35,22 +32,19 @@ stance: supports/contradicts/neutral/insufficient
 confidence: 0-100`;
 
     try {
-      const response = await this.ollama.generate({
+      const response = await this.groq.chat.completions.create({
         model: this.model,
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: 0.1,
-          num_predict: 150 // Shorter responses = more reliable JSON
-        }
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 200,
+        response_format: { type: 'json_object' } // Force JSON output
       });
       
-      let text = response.response.trim();
+      let text = response.choices[0].message.content.trim();
       
       // Remove markdown code blocks if present
       text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       
-      // Parse JSON from response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         console.error(`Raw response for ${paperId}:`, text.substring(0, 200));
@@ -59,12 +53,10 @@ confidence: 0-100`;
       
       const analysis = JSON.parse(jsonMatch[0]);
       
-      // Validate required fields
       if (!analysis.stance || typeof analysis.confidence !== 'number') {
         throw new Error('Missing required fields in JSON response');
       }
       
-      // Add paper metadata
       analysis.paperId = paperId;
       analysis.paperTitle = paper.title;
       analysis.paperYear = paper.year;
@@ -86,38 +78,27 @@ confidence: 0-100`;
     }
   }
 
-  /**
-   * Analyze multiple papers in parallel (batched)
-   */
-  async analyzePapersBatch(papers, claim, batchSize = 3) {
+  async analyzePapersBatch(papers, claim, batchSize = 10) {
     const results = [];
     
-    // Ollama is local, so smaller batches to avoid overwhelming CPU
+    // Groq is fast, process all at once
     for (let i = 0; i < papers.length; i += batchSize) {
       const batch = papers.slice(i, i + batchSize);
       const batchPromises = batch.map(paper => this.analyzePaper(paper, claim));
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
-      
-      // Small delay between batches
-      if (i + batchSize < papers.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
     }
     
     return results;
   }
 
-  /**
-   * Generate final verification summary
-   */
   async generateSummary(claim, analyses) {
     const supporting = analyses.filter(a => a.stance === 'supports');
     const contradicting = analyses.filter(a => a.stance === 'contradicts');
     const neutral = analyses.filter(a => a.stance === 'neutral');
     const insufficient = analyses.filter(a => a.stance === 'insufficient');
 
-    const prompt = `You are a scientific claim verification expert. Based on the analysis of ${analyses.length} papers, provide a final verification summary.
+    const prompt = `Based on the analysis of ${analyses.length} papers, provide a final verification summary.
 
 CLAIM: "${claim}"
 
@@ -133,7 +114,7 @@ ${supporting.slice(0, 3).map(a => `- ${a.paperTitle} (${a.paperYear}): ${a.evide
 CONTRADICTING EVIDENCE:
 ${contradicting.slice(0, 3).map(a => `- ${a.paperTitle} (${a.paperYear}): ${a.evidence}`).join('\n')}
 
-CRITICAL: Respond with ONLY a JSON object, nothing else:
+Respond with ONLY this JSON:
 {
   "verificationScore": 75,
   "verdict": "Supported",
@@ -144,24 +125,18 @@ CRITICAL: Respond with ONLY a JSON object, nothing else:
 }
 
 Valid verdicts: "Strongly Supported", "Supported", "Inconclusive", "Contradicted", "Strongly Contradicted"
-Valid confidence: "High", "Medium", "Low"
-
-JSON response:`;
+Valid confidence: "High", "Medium", "Low"`;
 
     try {
-      const response = await this.ollama.generate({
+      const response = await this.groq.chat.completions.create({
         model: this.model,
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: 0.1,
-          num_predict: 500
-        }
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 500,
+        response_format: { type: 'json_object' } // Force JSON output
       });
       
-      let text = response.response.trim();
-      
-      // Remove markdown code blocks if present
+      let text = response.choices[0].message.content.trim();
       text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -174,7 +149,6 @@ JSON response:`;
     } catch (error) {
       console.error('Error generating summary:', error.message);
       
-      // Fallback: Calculate simple score
       const totalConfident = supporting.length + contradicting.length;
       const score = totalConfident > 0 
         ? Math.round((supporting.length / totalConfident) * 100)
@@ -191,31 +165,25 @@ JSON response:`;
     }
   }
 
-  /**
-   * Main verification function
-   */
   async verifyClaim(claim, papers, options = {}) {
     const {
-      maxPapers = 5, // Reduced from 10 to 5
-      batchSize = 3,
+      maxPapers = 5,
+      batchSize = 10,
       onProgress = null
     } = options;
 
     const startTime = Date.now();
 
-    // Step 1: Select top papers by relevance
     const topPapers = papers
       .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
       .slice(0, maxPapers);
 
     if (onProgress) onProgress({ stage: 'analyzing', current: 0, total: topPapers.length });
 
-    // Step 2: Analyze papers in parallel batches
     const analyses = await this.analyzePapersBatch(topPapers, claim, batchSize);
 
     if (onProgress) onProgress({ stage: 'summarizing', current: topPapers.length, total: topPapers.length });
 
-    // Step 3: Generate summary
     const summary = await this.generateSummary(claim, analyses);
 
     const processingTime = Date.now() - startTime;

@@ -7,11 +7,16 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Claim Verifier with Ollama
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
-const verifier = new ClaimVerifier(OLLAMA_HOST);
+// Initialize Claim Verifier with Groq
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+if (!GROQ_API_KEY) {
+  console.warn('⚠️  GROQ_API_KEY not set - claim verification disabled');
+}
+const verifier = GROQ_API_KEY ? new ClaimVerifier(GROQ_API_KEY) : null;
 
-console.log(`✅ Claim verifier initialized (Ollama: ${OLLAMA_HOST})`);
+if (verifier) {
+  console.log('✅ Claim verifier initialized (Groq API)');
+}
 
 // Single Turso database for all operations
 const db = createClient({
@@ -684,10 +689,16 @@ async function fetchNASAADSMetadata(bibcode) {
   }
 }
 
-// Claim Verification Endpoint (Module 3 - Ollama)
+// Claim Verification Endpoint (Module 3 - Groq)
 app.post('/api/verify-claim', async (req, res) => {
+  if (!verifier) {
+    return res.status(503).json({ 
+      error: 'Claim verification not available - GROQ_API_KEY not configured' 
+    });
+  }
+
   try {
-    const { claim, papers, maxPapers = 10 } = req.body;
+    const { claim, papers, maxPapers = 5 } = req.body;
 
     if (!claim || typeof claim !== 'string') {
       return res.status(400).json({ error: 'Claim is required' });
@@ -701,7 +712,7 @@ app.post('/api/verify-claim', async (req, res) => {
 
     const result = await verifier.verifyClaim(claim, papers, {
       maxPapers,
-      batchSize: 3,
+      batchSize: 10,
       onProgress: (progress) => {
         console.log(`[Verification] ${progress.stage}: ${progress.current}/${progress.total}`);
       }

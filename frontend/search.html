@@ -722,12 +722,9 @@
                 currentPapers = data.sources; // Store papers for verification
                 displayResults(data, false);
                 
-                // Enable verify button
+                // Enable verify button (no auto-trigger)
                 const verifyBtn = document.getElementById('verifyBtn');
                 verifyBtn.disabled = false;
-                
-                // Auto-trigger verification after search completes
-                setTimeout(() => verifyClaim(), 500);
 
             } catch (error) {
                 resultsDiv.innerHTML = `
@@ -756,9 +753,9 @@
             verificationDiv.classList.remove('hidden');
             verificationDiv.innerHTML = `
                 <div class="search-card" style="text-align: center;">
-                    <p class="loading">🤖 AI is analyzing papers with local Ollama</p>
+                    <p class="loading">🤖 AI is analyzing papers with Groq (llama-3.1-70b)</p>
                     <p style="color: var(--text-secondary); font-size: 14px; margin-top: 10px;">
-                        This takes 60-120 seconds (local CPU processing)...
+                        This takes 5-10 seconds...
                     </p>
                 </div>
             `;
